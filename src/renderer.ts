@@ -1,13 +1,15 @@
 // src/renderer.ts
-import { Modal, TFile, Notice, parseYaml, stringifyYaml } from "obsidian";
-import type { ChartSpec, QueryResult } from "./types";
+import type { ChartSpec, QueryResult, QueryResultRow } from "./types";
 import {
+  App,
   TFile,
   parseYaml,
   stringifyYaml,
   Notice,
   Modal,
 } from "obsidian";
+
+declare const app: App;
 
 const PAD_L = 48;
 const PAD_R = 10;
@@ -81,13 +83,17 @@ function showTooltip(
 
   const valueHtml =
     typeof value === "number"
-      ? (Number.isInteger(value) ? String(value) : value.toFixed(2))
+      ? Number.isInteger(value)
+        ? String(value)
+        : value.toFixed(2)
       : String(value);
 
   tooltip.innerHTML = `
     <div class="chart-notes-tooltip-title">${label}</div>
     <div class="chart-notes-tooltip-value">${valueHtml}</div>
-    <div class="chart-notes-tooltip-notes">${notesLen} nota${notesLen === 1 ? "" : "s"}</div>
+    <div class="chart-notes-tooltip-notes">${notesLen} nota${
+      notesLen === 1 ? "" : "s"
+    }</div>
   `;
 
   tooltip.style.display = "block";
@@ -97,13 +103,11 @@ function showTooltip(
   let x = ev.clientX - rect.left + 6;
   let y = ev.clientY - rect.top + 6;
 
-  // clamp horizontal (não sair pela direita/esquerda)
   if (x + tRect.width > rect.width - 4) {
     x = rect.width - tRect.width - 4;
   }
   if (x < 4) x = 4;
 
-  // clamp vertical (não estourar embaixo/cima)
   if (y + tRect.height > rect.height - 4) {
     y = rect.height - tRect.height - 4;
   }
@@ -112,7 +116,6 @@ function showTooltip(
   tooltip.style.left = x + "px";
   tooltip.style.top = y + "px";
 }
-
 
 function hideTooltip(tooltip: HTMLElement) {
   tooltip.style.display = "none";
@@ -158,9 +161,8 @@ function openDetails(
       text: n,
     });
     link.href = "#";
-    link.addEventListener("click", (ev) => {
+    link.addEventListener("click", (ev: MouseEvent) => {
       ev.preventDefault();
-      // @ts-ignore
       app.workspace.openLinkText(n, "", false);
     });
   }
@@ -179,17 +181,14 @@ function prettifyLabelShort(raw: any): string {
   let s = String(raw).trim();
   if (!s) return "";
 
-  // tira [[ ]] de links wiki
   const m = s.match(/^\[\[(.+?)\]\]$/);
   if (m) s = m[1];
 
-  // tira path inicial (TaskNotes/Tasks/...) – deixa só o "nome da nota"
   const lastSlash = s.lastIndexOf("/");
   if (lastSlash >= 0 && lastSlash < s.length - 1) {
     s = s.slice(lastSlash + 1);
   }
 
-  // evita textos absurdamente longos (mas deixa bem mais coisa visível)
   const MAX = 80;
   if (s.length > MAX) {
     s = s.slice(0, MAX - 1) + "…";
@@ -197,7 +196,6 @@ function prettifyLabelShort(raw: any): string {
 
   return s;
 }
-
 
 // label completo pra modal
 function prettifyLabelFull(raw: string): string {
@@ -233,202 +231,427 @@ function isLightColor(raw: string | undefined): boolean {
 
 export interface RenderContext {
   refresh?: () => void;
-  reindexFile?: (path: string) => Promise<void>;
+  reindexFile?: (path: string) => void | Promise<void>;
 }
 
-
 export class PropChartsRenderer {
-    render(
-        container: HTMLElement,
-        spec: ChartSpec,
-        data: QueryResult,
-        ctx?: RenderContext,
-        isZoom: boolean = false
-    ) {
-        const { title } = spec.options ?? {};
-        container.empty();
-        container.addClass("prop-charts-container");
+  render(
+    container: HTMLElement,
+    spec: ChartSpec,
+    data: QueryResult,
+    ctx?: RenderContext,
+    isZoom: boolean = false
+  ) {
+    const { title } = spec.options ?? {};
+    container.empty();
+    container.addClass("prop-charts-container");
 
-        // Cabeçalho só com o título
-        const header = container.createDiv({ cls: "prop-charts-title-row" });
-        const titleEl = header.createDiv({ cls: "prop-charts-title" });
-        if (title) {
-            titleEl.textContent = title;
-        }
-
-        // Renderiza o gráfico em si
-        switch (spec.type) {
-            case "bar":
-                this.renderBar(container, spec, data);
-                break;
-            case "line":
-                this.renderLine(container, spec, data, false);
-                break;
-            case "area":
-                this.renderLine(container, spec, data, true);
-                break;
-            case "pie":
-                this.renderPie(container, spec, data);
-                break;
-            case "scatter":
-                this.renderScatter(container, spec, data);
-                break;
-            case "table":
-                this.renderTable(container, spec, data);
-                break;
-            case "gantt":
-                this.renderGantt(container, spec, data, ctx);
-                break;
-            case "stacked-bar":
-                this.renderStackedBar(container, spec, data);
-                break;
-            default:
-                container.createDiv({
-                    text: "Chart Notes: tipo não suportado: " + spec.type,
-                });
-        }
-
-        // Botão de zoom como overlay no canto inferior direito do gráfico
-        // (só na versão "normal", não dentro da modal de zoom)
-        if (!isZoom) {
-            const zoomBtn = container.createEl("button", {
-                cls: "chart-notes-zoom-button",
-            });
-            zoomBtn.setAttr("type", "button");
-            zoomBtn.setAttr("aria-label", "Expandir gráfico");
-            zoomBtn.textContent = "⤢";
-
-            zoomBtn.addEventListener("click", (ev) => {
-                ev.preventDefault();
-                new ChartNotesZoomModal(spec, data, this, ctx).open();
-            });
-        }
+    const header = container.createDiv({ cls: "prop-charts-title-row" });
+    const titleEl = header.createDiv({ cls: "prop-charts-title" });
+    if (title) {
+      titleEl.textContent = title;
     }
 
+    switch (spec.type) {
+      case "bar":
+        this.renderBar(container, spec, data);
+        break;
+      case "line":
+        this.renderLine(container, spec, data, false);
+        break;
+      case "area":
+        this.renderLine(container, spec, data, true);
+        break;
+      case "pie":
+        this.renderPie(container, spec, data);
+        break;
+      case "scatter":
+        this.renderScatter(container, spec, data);
+        break;
+      case "table":
+        this.renderTable(container, spec, data);
+        break;
+      case "gantt":
+        this.renderGantt(container, spec, data, ctx);
+        break;
+      case "stacked-bar":
+        this.renderStackedBar(container, spec, data);
+        break;
+      default:
+        container.createDiv({
+          text: "Chart Notes: tipo não suportado: " + spec.type,
+        });
+    }
+
+    if (!isZoom) {
+      const zoomBtn = container.createEl("button", {
+        cls: "chart-notes-zoom-button",
+      });
+      zoomBtn.setAttr("type", "button");
+      zoomBtn.setAttr("aria-label", "Expandir gráfico");
+      zoomBtn.textContent = "⤢";
+
+      zoomBtn.addEventListener("click", (ev: MouseEvent) => {
+        ev.preventDefault();
+        new ChartNotesZoomModal(spec, data, this, ctx).open();
+      });
+    }
+  }
+
   // BAR -----------------------------------------------------------------------
+  private renderBar(
+    container: HTMLElement,
+    spec: ChartSpec,
+    data: QueryResult
+  ) {
+    const opts: any = spec.options ?? {};
+    const background: string | undefined = opts.background;
+    const drilldown: boolean = opts.drilldown ?? true;
 
-private renderBar(
-  container: HTMLElement,
-  spec: ChartSpec,
-  data: QueryResult
-) {
-  const opts: any = spec.options ?? {};
-  const background: string | undefined = opts.background;
-  const drilldown: boolean = opts.drilldown ?? true;
+    const rows = data.rows ?? [];
+    if (!rows.length) {
+      container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
+      return;
+    }
 
-  const rows = data.rows ?? [];
-  if (!rows.length) {
-    container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
-    return;
-  }
+    const { inner, svg, tooltip, details } = ensureContainer(
+      container,
+      background
+    );
+    const vw = container.getBoundingClientRect().width || 600;
+    const width = Math.max(vw, 480);
+    inner.style.width = width + "px";
 
-  const { inner, svg, tooltip, details } = ensureContainer(container, background);
-  const vw = container.getBoundingClientRect().width || 600;
-  const width = Math.max(vw, 480);
-  inner.style.width = width + "px";
+    const PAD_L2 = 40;
+    const PAD_R2 = 16;
+    const PAD_T2 = 18;
+    const PAD_B2 = 28;
 
-  const PAD_L = 40;
-  const PAD_R = 16;
-  const PAD_T = 18;
-  const PAD_B = 28;
+    const height = DEFAULT_H;
+    svg.setAttribute("height", String(height));
 
-  const height = DEFAULT_H;
-  svg.setAttribute("height", String(height));
+    const plotW = width - PAD_L2 - PAD_R2;
+    const plotH = height - PAD_T2 - PAD_B2;
 
-  const plotW = width - PAD_L - PAD_R;
-  const plotH = height - PAD_T - PAD_B;
+    type CatGroup = { label: any; rows: QueryResultRow[] };
+    const groupsMap = new Map<string, CatGroup>();
 
-  // agrupar por categoria X
-  type CatGroup = { label: any; rows: QueryResultRow[] };
-  const groupsMap = new Map<string, CatGroup>();
+    for (const r of rows) {
+      const key = String(r.x);
+      const g = groupsMap.get(key) ?? { label: r.x, rows: [] };
+      g.rows.push(r);
+      groupsMap.set(key, g);
+    }
 
-  for (const r of rows) {
-    const key = String(r.x);
-    const g = groupsMap.get(key) ?? { label: r.x, rows: [] };
-    g.rows.push(r);
-    groupsMap.set(key, g);
-  }
+    const catKeys = Array.from(groupsMap.keys()).sort((a, b) =>
+      a < b ? -1 : a > b ? 1 : 0
+    );
+    const categories = catKeys.map((k) => groupsMap.get(k)!);
+    const nCats = categories.length;
 
-  const catKeys = Array.from(groupsMap.keys()).sort((a, b) =>
-    a < b ? -1 : a > b ? 1 : 0
-  );
-  const categories = catKeys.map((k) => groupsMap.get(k)!);
-  const nCats = categories.length;
+    const seriesSet = new Set<string>();
+    rows.forEach((r) => {
+      if (r.series != null) seriesSet.add(String(r.series));
+    });
+    const seriesKeys = Array.from(seriesSet);
 
-  // séries detectadas
-  const seriesSet = new Set<string>();
-  rows.forEach((r) => {
-    if (r.series != null) seriesSet.add(String(r.series));
-  });
-  const seriesKeys = Array.from(seriesSet);
+    const hasMultiSeries = seriesKeys.length > 1;
+    const barMode: "single" | "grouped" = hasMultiSeries ? "grouped" : "single";
 
-  // se tiver mais de uma série → grouped; se não → single
-  const hasMultiSeries = seriesKeys.length > 1;
-  const barMode: "single" | "grouped" = hasMultiSeries ? "grouped" : "single";
-
-  // domínio Y
-  let maxY = 0;
-  if (!hasMultiSeries) {
+    let maxY = 0;
     rows.forEach((r) => {
       if (r.y > maxY) maxY = r.y;
     });
-  } else {
-    // ainda é o maior valor individual (para grouped)
-    rows.forEach((r) => {
-      if (r.y > maxY) maxY = r.y;
+    if (!isFinite(maxY) || maxY <= 0) maxY = 1;
+
+    const yScale = (v: number) => PAD_T2 + plotH - (v / (maxY || 1)) * plotH;
+    const baselineY = yScale(0);
+
+    const yTicks = 4;
+    for (let i = 0; i <= yTicks; i++) {
+      const t = (maxY * i) / yTicks;
+      const y = yScale(t);
+
+      const line = document.createElementNS(svg.namespaceURI, "line");
+      line.setAttribute("x1", String(PAD_L2));
+      line.setAttribute("y1", String(y));
+      line.setAttribute("x2", String(width - PAD_R2));
+      line.setAttribute("y2", String(y));
+      line.setAttribute("stroke", "#cccccc");
+      line.setAttribute("stroke-opacity", "0.25");
+      svg.appendChild(line);
+
+      const label = document.createElementNS(svg.namespaceURI, "text");
+      label.setAttribute("x", String(PAD_L2 - 4));
+      label.setAttribute("y", String(y + 3));
+      label.setAttribute("text-anchor", "end");
+      label.setAttribute("font-size", "10");
+      label.setAttribute("fill", "#111111");
+      label.textContent = String(Math.round(t));
+      svg.appendChild(label);
+    }
+
+    const step = nCats > 0 ? plotW / nCats : plotW;
+
+    categories.forEach((cat, idx) => {
+      const cx = PAD_L2 + step * (idx + 0.5);
+      const xLabel = String(cat.label);
+
+      const labelNode = document.createElementNS(svg.namespaceURI, "text");
+      labelNode.setAttribute("x", String(cx));
+      labelNode.setAttribute("y", String(height - PAD_B2 + 12));
+      labelNode.setAttribute("text-anchor", "middle");
+      labelNode.setAttribute("font-size", "10");
+      labelNode.setAttribute("fill", "#111111");
+      labelNode.textContent = xLabel;
+      svg.appendChild(labelNode);
+    });
+
+    if (hasMultiSeries) {
+      const legend = container.createDiv({ cls: "chart-notes-legend" });
+      seriesKeys.forEach((sKey, idx) => {
+        const item = legend.createDiv({ cls: "chart-notes-legend-item" });
+        const swatch = item.createDiv();
+        swatch.style.width = "10px";
+        swatch.style.height = "10px";
+        swatch.style.borderRadius = "999px";
+        swatch.style.backgroundColor = colorFor(sKey, idx);
+        item.createSpan({ text: sKey });
+      });
+    }
+
+    categories.forEach((cat, catIndex) => {
+      const cx = PAD_L2 + step * (catIndex + 0.5);
+      const catRows = cat.rows;
+
+      if (barMode === "single") {
+        const r = catRows[0];
+        const value = r.y;
+
+        const barWidth = step * 0.6;
+        const x0 = cx - barWidth / 2;
+        const y1 = yScale(value);
+        const h = Math.max(2, baselineY - y1);
+        const color = colorFor("bar", catIndex);
+
+        const rect = document.createElementNS(
+          svg.namespaceURI,
+          "rect"
+        ) as SVGRectElement;
+        rect.setAttribute("x", String(x0));
+        rect.setAttribute("y", String(y1));
+        rect.setAttribute("width", String(barWidth));
+        rect.setAttribute("height", String(h));
+        rect.setAttribute("fill", color);
+        rect.setAttribute("stroke", "rgba(0,0,0,0.25)");
+        rect.setAttribute("stroke-width", "0.5");
+        rect.style.cursor = "pointer";
+
+        const title = String(cat.label);
+        const body = `valor: ${Math.round(value * 100) / 100}`;
+
+        rect.addEventListener("mouseenter", (ev: MouseEvent) =>
+          showTooltip(
+            container,
+            tooltip,
+            title,
+            body,
+            r.notes?.length ?? 0,
+            ev
+          )
+        );
+        rect.addEventListener("mouseleave", () => hideTooltip(tooltip));
+
+        rect.addEventListener("click", (ev: MouseEvent) => {
+          ev.preventDefault();
+          openDetails(
+            container,
+            details,
+            title,
+            value,
+            r.notes ?? [],
+            drilldown
+          );
+        });
+
+        svg.appendChild(rect);
+        return;
+      }
+
+      const m = seriesKeys.length;
+      const barWidth = step / Math.max(m + 1, 2);
+      const groupWidth = m * barWidth;
+      const startX = cx - groupWidth / 2;
+
+      seriesKeys.forEach((sKey, sIndex) => {
+        const row = catRows.find(
+          (r) => (r.series != null ? String(r.series) : "") === sKey
+        );
+        if (!row) return;
+
+        const value = row.y;
+        const x0 = startX + sIndex * barWidth;
+        const y1 = yScale(value);
+        const h = Math.max(2, baselineY - y1);
+        const color = colorFor(sKey, sIndex);
+
+        const rect = document.createElementNS(
+          svg.namespaceURI,
+          "rect"
+        ) as SVGRectElement;
+        rect.setAttribute("x", String(x0));
+        rect.setAttribute("y", String(y1));
+        rect.setAttribute("width", String(barWidth));
+        rect.setAttribute("height", String(h));
+        rect.setAttribute("fill", color);
+        rect.setAttribute("stroke", "rgba(0,0,0,0.25)");
+        rect.setAttribute("stroke-width", "0.5");
+        rect.style.cursor = "pointer";
+
+        const title = `${sKey} @ ${String(cat.label)}`;
+        const body = `valor: ${Math.round(value * 100) / 100}`;
+
+        rect.addEventListener("mouseenter", (ev: MouseEvent) =>
+          showTooltip(
+            container,
+            tooltip,
+            title,
+            body,
+            row.notes?.length ?? 0,
+            ev
+          )
+        );
+        rect.addEventListener("mouseleave", () => hideTooltip(tooltip));
+
+        rect.addEventListener("click", (ev: MouseEvent) => {
+          ev.preventDefault();
+          openDetails(
+            container,
+            details,
+            title,
+            value,
+            row.notes ?? [],
+            drilldown
+          );
+        });
+
+        svg.appendChild(rect);
+      });
     });
   }
-  if (!isFinite(maxY) || maxY <= 0) maxY = 1;
 
-  const yScale = (v: number) =>
-    PAD_T + plotH - (v / (maxY || 1)) * plotH;
+  // STACKED BAR ---------------------------------------------------------------
+  private renderStackedBar(
+    container: HTMLElement,
+    spec: ChartSpec,
+    data: QueryResult
+  ) {
+    const opts: any = spec.options ?? {};
+    const background: string | undefined = opts.background;
+    const drilldown: boolean = opts.drilldown ?? true;
 
-  const baselineY = yScale(0);
+    const rows = data.rows ?? [];
+    if (!rows.length) {
+      container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
+      return;
+    }
 
-  // eixo Y
-  const yTicks = 4;
-  for (let i = 0; i <= yTicks; i++) {
-    const t = (maxY * i) / yTicks;
-    const y = yScale(t);
+    const { inner, svg, tooltip, details } = ensureContainer(
+      container,
+      background
+    );
+    const vw = container.getBoundingClientRect().width || 600;
+    const width = Math.max(vw, 480);
+    inner.style.width = width + "px";
 
-    const line = document.createElementNS(svg.namespaceURI, "line");
-    line.setAttribute("x1", String(PAD_L));
-    line.setAttribute("y1", String(y));
-    line.setAttribute("x2", String(width - PAD_R));
-    line.setAttribute("y2", String(y));
-    line.setAttribute("stroke", "#cccccc");
-    line.setAttribute("stroke-opacity", "0.25");
-    svg.appendChild(line);
+    const PAD_L2 = 40;
+    const PAD_R2 = 16;
+    const PAD_T2 = 18;
+    const PAD_B2 = 28;
 
-    const label = document.createElementNS(svg.namespaceURI, "text");
-    label.setAttribute("x", String(PAD_L - 4));
-    label.setAttribute("y", String(y + 3));
-    label.setAttribute("text-anchor", "end");
-    label.setAttribute("font-size", "10");
-    label.setAttribute("fill", "#111111");
-    label.textContent = String(Math.round(t));
-    svg.appendChild(label);
-  }
+    const height = DEFAULT_H;
+    svg.setAttribute("height", String(height));
 
-  // eixo X labels
-  const step = nCats > 0 ? plotW / nCats : plotW;
+    const plotW = width - PAD_L2 - PAD_R2;
+    const plotH = height - PAD_T2 - PAD_B2;
 
-  categories.forEach((cat, idx) => {
-    const cx = PAD_L + step * (idx + 0.5);
-    const xLabel = String(cat.label);
+    type CatGroup = { label: any; rows: QueryResultRow[] };
+    const groupsMap = new Map<string, CatGroup>();
 
-    const labelNode = document.createElementNS(svg.namespaceURI, "text");
-    labelNode.setAttribute("x", String(cx));
-    labelNode.setAttribute("y", String(height - PAD_B + 12));
-    labelNode.setAttribute("text-anchor", "middle");
-    labelNode.setAttribute("font-size", "10");
-    labelNode.setAttribute("fill", "#111111");
-    labelNode.textContent = xLabel;
-    svg.appendChild(labelNode);
-  });
+    for (const r of rows) {
+      const key = String(r.x);
+      const g = groupsMap.get(key) ?? { label: r.x, rows: [] };
+      g.rows.push(r);
+      groupsMap.set(key, g);
+    }
 
-  // legenda para multi-série
-  if (hasMultiSeries) {
+    const catKeys = Array.from(groupsMap.keys()).sort((a, b) =>
+      a < b ? -1 : a > b ? 1 : 0
+    );
+    const categories = catKeys.map((k) => groupsMap.get(k)!);
+    const nCats = categories.length;
+
+    const seriesSet = new Set<string>();
+    rows.forEach((r) => {
+      if (r.series != null) seriesSet.add(String(r.series));
+    });
+    const seriesKeys = Array.from(seriesSet);
+
+    if (!seriesKeys.length) {
+      this.renderBar(container, spec, data);
+      return;
+    }
+
+    let maxY = 0;
+    categories.forEach((cat) => {
+      const sum = cat.rows.reduce((acc, r) => acc + r.y, 0);
+      if (sum > maxY) maxY = sum;
+    });
+    if (!isFinite(maxY) || maxY <= 0) maxY = 1;
+
+    const yScale = (v: number) => PAD_T2 + plotH - (v / (maxY || 1)) * plotH;
+    const baselineY = yScale(0);
+
+    const yTicks = 4;
+    for (let i = 0; i <= yTicks; i++) {
+      const t = (maxY * i) / yTicks;
+      const y = yScale(t);
+
+      const line = document.createElementNS(svg.namespaceURI, "line");
+      line.setAttribute("x1", String(PAD_L2));
+      line.setAttribute("y1", String(y));
+      line.setAttribute("x2", String(width - PAD_R2));
+      line.setAttribute("y2", String(y));
+      line.setAttribute("stroke", "#cccccc");
+      line.setAttribute("stroke-opacity", "0.25");
+      svg.appendChild(line);
+
+      const label = document.createElementNS(svg.namespaceURI, "text");
+      label.setAttribute("x", String(PAD_L2 - 4));
+      label.setAttribute("y", String(y + 3));
+      label.setAttribute("text-anchor", "end");
+      label.setAttribute("font-size", "10");
+      label.setAttribute("fill", "#111111");
+      label.textContent = String(Math.round(t));
+      svg.appendChild(label);
+    }
+
+    const step = nCats > 0 ? plotW / nCats : plotW;
+
+    categories.forEach((cat, idx) => {
+      const cx = PAD_L2 + step * (idx + 0.5);
+      const xLabel = String(cat.label);
+
+      const labelNode = document.createElementNS(svg.namespaceURI, "text");
+      labelNode.setAttribute("x", String(cx));
+      labelNode.setAttribute("y", String(height - PAD_B2 + 12));
+      labelNode.setAttribute("text-anchor", "middle");
+      labelNode.setAttribute("font-size", "10");
+      labelNode.setAttribute("fill", "#111111");
+      labelNode.textContent = xLabel;
+      svg.appendChild(labelNode);
+    });
+
     const legend = container.createDiv({ cls: "chart-notes-legend" });
     seriesKeys.forEach((sKey, idx) => {
       const item = legend.createDiv({ cls: "chart-notes-legend-item" });
@@ -439,556 +662,307 @@ private renderBar(
       swatch.style.backgroundColor = colorFor(sKey, idx);
       item.createSpan({ text: sKey });
     });
-  }
 
-  // desenhar barras
-  categories.forEach((cat, catIndex) => {
-    const cx = PAD_L + step * (catIndex + 0.5);
-    const catRows = cat.rows;
-
-    if (barMode === "single") {
-      const r = catRows[0];
-      const value = r.y;
-
+    categories.forEach((cat, catIndex) => {
+      const cx = PAD_L2 + step * (catIndex + 0.5);
       const barWidth = step * 0.6;
       const x0 = cx - barWidth / 2;
-      const y1 = yScale(value);
-      const h = Math.max(2, baselineY - y1);
-      const color = colorFor("bar", catIndex);
 
-      const rect = document.createElementNS(svg.namespaceURI, "rect");
-      rect.setAttribute("x", String(x0));
-      rect.setAttribute("y", String(y1));
-      rect.setAttribute("width", String(barWidth));
-      rect.setAttribute("height", String(h));
-      rect.setAttribute("fill", color);
-      rect.setAttribute("stroke", "rgba(0,0,0,0.25)");
-      rect.setAttribute("stroke-width", "0.5");
-      rect.style.cursor = "pointer";
+      let acc = 0;
 
-      const title = String(cat.label);
-      const body = `valor: ${Math.round(value * 100) / 100}`;
-
-      rect.addEventListener("mouseenter", (ev) =>
-        showTooltip(
-          container,
-          tooltip,
-          title,
-          body,
-          r.notes?.length ?? 0,
-          ev as MouseEvent
-        )
-      );
-      rect.addEventListener("mouseleave", () => hideTooltip(tooltip));
-
-      rect.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        openDetails(
-          container,
-          details,
-          title,
-          value,
-          r.notes ?? [],
-          drilldown
+      seriesKeys.forEach((sKey, sIndex) => {
+        const row = cat.rows.find(
+          (r) => (r.series != null ? String(r.series) : "") === sKey
         );
-      });
+        if (!row) return;
 
-      svg.appendChild(rect);
+        const v = row.y;
+        const vStart = acc;
+        const vEnd = acc + v;
+        acc = vEnd;
+
+        const y0 = yScale(vStart);
+        const y1 = yScale(vEnd);
+        const h = Math.max(2, y0 - y1);
+        const color = colorFor(sKey, sIndex);
+
+        const rect = document.createElementNS(
+          svg.namespaceURI,
+          "rect"
+        ) as SVGRectElement;
+        rect.setAttribute("x", String(x0));
+        rect.setAttribute("y", String(y1));
+        rect.setAttribute("width", String(barWidth));
+        rect.setAttribute("height", String(h));
+        rect.setAttribute("fill", color);
+        rect.setAttribute("stroke", "rgba(0,0,0,0.25)");
+        rect.setAttribute("stroke-width", "0.5");
+        rect.style.cursor = "pointer";
+
+        const title = `${sKey} @ ${String(cat.label)}`;
+        const body = `valor: ${Math.round(v * 100) / 100}`;
+
+        rect.addEventListener("mouseenter", (ev: MouseEvent) =>
+          showTooltip(
+            container,
+            tooltip,
+            title,
+            body,
+            row.notes?.length ?? 0,
+            ev
+          )
+        );
+        rect.addEventListener("mouseleave", () => hideTooltip(tooltip));
+
+        rect.addEventListener("click", (ev: MouseEvent) => {
+          ev.preventDefault();
+          openDetails(
+            container,
+            details,
+            title,
+            v,
+            row.notes ?? [],
+            drilldown
+          );
+        });
+
+        svg.appendChild(rect);
+      });
+    });
+  }
+
+  // LINE / AREA ---------------------------------------------------------------
+  private renderLine(
+    container: HTMLElement,
+    spec: ChartSpec,
+    data: QueryResult,
+    isArea: boolean
+  ) {
+    const opts: any = spec.options ?? {};
+    const background: string | undefined = opts.background;
+    const drilldown: boolean = opts.drilldown ?? true;
+
+    const rows = data.rows ?? [];
+    if (!rows.length) {
+      container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
       return;
     }
 
-    // grouped
-    const m = seriesKeys.length;
-    const barWidth = step / Math.max(m + 1, 2);
-    const groupWidth = m * barWidth;
-    const startX = cx - groupWidth / 2;
+    const { inner, svg, tooltip, details } = ensureContainer(
+      container,
+      background
+    );
+    const vw = container.getBoundingClientRect().width || 600;
+    const width = Math.max(vw, 480);
+    inner.style.width = width + "px";
 
-    seriesKeys.forEach((sKey, sIndex) => {
-      const row = catRows.find(
-        (r) => (r.series != null ? String(r.series) : "") === sKey
-      );
-      if (!row) return;
+    const PAD_L2 = 40;
+    const PAD_R2 = 16;
+    const PAD_T2 = 18;
+    const PAD_B2 = 24;
 
-      const value = row.y;
-      const x0 = startX + sIndex * barWidth;
-      const y1 = yScale(value);
-      const h = Math.max(2, baselineY - y1);
-      const color = colorFor(sKey, sIndex);
+    const height = DEFAULT_H;
+    svg.setAttribute("height", String(height));
 
-      const rect = document.createElementNS(svg.namespaceURI, "rect");
-      rect.setAttribute("x", String(x0));
-      rect.setAttribute("y", String(y1));
-      rect.setAttribute("width", String(barWidth));
-      rect.setAttribute("height", String(h));
-      rect.setAttribute("fill", color);
-      rect.setAttribute("stroke", "rgba(0,0,0,0.25)");
-      rect.setAttribute("stroke-width", "0.5");
-      rect.style.cursor = "pointer";
+    const plotW = width - PAD_L2 - PAD_R2;
+    const plotH = height - PAD_T2 - PAD_B2;
 
-      const title = `${sKey} @ ${String(cat.label)}`;
-      const body = `valor: ${Math.round(value * 100) / 100}`;
-
-      rect.addEventListener("mouseenter", (ev) =>
-        showTooltip(
-          container,
-          tooltip,
-          title,
-          body,
-          row.notes?.length ?? 0,
-          ev as MouseEvent
-        )
-      );
-      rect.addEventListener("mouseleave", () => hideTooltip(tooltip));
-
-      rect.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        openDetails(
-          container,
-          details,
-          title,
-          value,
-          row.notes ?? [],
-          drilldown
-        );
-      });
-
-      svg.appendChild(rect);
-    });
-  });
-}
-
-
-  // STACKED BAR ---------------------------------------------------------------
-
-private renderStackedBar(
-  container: HTMLElement,
-  spec: ChartSpec,
-  data: QueryResult
-) {
-  const opts: any = spec.options ?? {};
-  const background: string | undefined = opts.background;
-  const drilldown: boolean = opts.drilldown ?? true;
-
-  const rows = data.rows ?? [];
-  if (!rows.length) {
-    container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
-    return;
-  }
-
-  const { inner, svg, tooltip, details } = ensureContainer(container, background);
-  const vw = container.getBoundingClientRect().width || 600;
-  const width = Math.max(vw, 480);
-  inner.style.width = width + "px";
-
-  const PAD_L = 40;
-  const PAD_R = 16;
-  const PAD_T = 18;
-  const PAD_B = 28;
-
-  const height = DEFAULT_H;
-  svg.setAttribute("height", String(height));
-
-  const plotW = width - PAD_L - PAD_R;
-  const plotH = height - PAD_T - PAD_B;
-
-  // agrupar por X
-  type CatGroup = { label: any; rows: QueryResultRow[] };
-  const groupsMap = new Map<string, CatGroup>();
-
-  for (const r of rows) {
-    const key = String(r.x);
-    const g = groupsMap.get(key) ?? { label: r.x, rows: [] };
-    g.rows.push(r);
-    groupsMap.set(key, g);
-  }
-
-  const catKeys = Array.from(groupsMap.keys()).sort((a, b) =>
-    a < b ? -1 : a > b ? 1 : 0
-  );
-  const categories = catKeys.map((k) => groupsMap.get(k)!);
-  const nCats = categories.length;
-
-  // séries
-  const seriesSet = new Set<string>();
-  rows.forEach((r) => {
-    if (r.series != null) seriesSet.add(String(r.series));
-  });
-  const seriesKeys = Array.from(seriesSet);
-
-  if (!seriesKeys.length) {
-    // sem séries, podemos delegar para renderBar normal
-    this.renderBar(container, spec, data);
-    return;
-  }
-
-  // domínio Y (soma empilhada)
-  let maxY = 0;
-  categories.forEach((cat) => {
-    const sum = cat.rows.reduce((acc, r) => acc + r.y, 0);
-    if (sum > maxY) maxY = sum;
-  });
-  if (!isFinite(maxY) || maxY <= 0) maxY = 1;
-
-  const yScale = (v: number) =>
-    PAD_T + plotH - (v / (maxY || 1)) * plotH;
-
-  const baselineY = yScale(0);
-
-  // eixo Y
-  const yTicks = 4;
-  for (let i = 0; i <= yTicks; i++) {
-    const t = (maxY * i) / yTicks;
-    const y = yScale(t);
-
-    const line = document.createElementNS(svg.namespaceURI, "line");
-    line.setAttribute("x1", String(PAD_L));
-    line.setAttribute("y1", String(y));
-    line.setAttribute("x2", String(width - PAD_R));
-    line.setAttribute("y2", String(y));
-    line.setAttribute("stroke", "#cccccc");
-    line.setAttribute("stroke-opacity", "0.25");
-    svg.appendChild(line);
-
-    const label = document.createElementNS(svg.namespaceURI, "text");
-    label.setAttribute("x", String(PAD_L - 4));
-    label.setAttribute("y", String(y + 3));
-    label.setAttribute("text-anchor", "end");
-    label.setAttribute("font-size", "10");
-    label.setAttribute("fill", "#111111");
-    label.textContent = String(Math.round(t));
-    svg.appendChild(label);
-  }
-
-  // eixo X labels
-  const step = nCats > 0 ? plotW / nCats : plotW;
-
-  categories.forEach((cat, idx) => {
-    const cx = PAD_L + step * (idx + 0.5);
-    const xLabel = String(cat.label);
-
-    const labelNode = document.createElementNS(svg.namespaceURI, "text");
-    labelNode.setAttribute("x", String(cx));
-    labelNode.setAttribute("y", String(height - PAD_B + 12));
-    labelNode.setAttribute("text-anchor", "middle");
-    labelNode.setAttribute("font-size", "10");
-    labelNode.setAttribute("fill", "#111111");
-    labelNode.textContent = xLabel;
-    svg.appendChild(labelNode);
-  });
-
-  // legenda
-  const legend = container.createDiv({ cls: "chart-notes-legend" });
-  seriesKeys.forEach((sKey, idx) => {
-    const item = legend.createDiv({ cls: "chart-notes-legend-item" });
-    const swatch = item.createDiv();
-    swatch.style.width = "10px";
-    swatch.style.height = "10px";
-    swatch.style.borderRadius = "999px";
-    swatch.style.backgroundColor = colorFor(sKey, idx);
-    item.createSpan({ text: sKey });
-  });
-
-  // desenhar barras empilhadas
-  categories.forEach((cat, catIndex) => {
-    const cx = PAD_L + step * (catIndex + 0.5);
-    const barWidth = step * 0.6;
-    const x0 = cx - barWidth / 2;
-
-    let acc = 0;
-
-    seriesKeys.forEach((sKey, sIndex) => {
-      const row = cat.rows.find(
-        (r) => (r.series != null ? String(r.series) : "") === sKey
-      );
-      if (!row) return;
-
-      const v = row.y;
-      const vStart = acc;
-      const vEnd = acc + v;
-      acc = vEnd;
-
-      const y0 = yScale(vStart);
-      const y1 = yScale(vEnd);
-      const h = Math.max(2, y0 - y1);
-      const color = colorFor(sKey, sIndex);
-
-      const rect = document.createElementNS(svg.namespaceURI, "rect");
-      rect.setAttribute("x", String(x0));
-      rect.setAttribute("y", String(y1));
-      rect.setAttribute("width", String(barWidth));
-      rect.setAttribute("height", String(h));
-      rect.setAttribute("fill", color);
-      rect.setAttribute("stroke", "rgba(0,0,0,0.25)");
-      rect.setAttribute("stroke-width", "0.5");
-      rect.style.cursor = "pointer";
-
-      const title = `${sKey} @ ${String(cat.label)}`;
-      const body = `valor: ${Math.round(v * 100) / 100}`;
-
-      rect.addEventListener("mouseenter", (ev) =>
-        showTooltip(
-          container,
-          tooltip,
-          title,
-          body,
-          row.notes?.length ?? 0,
-          ev as MouseEvent
-        )
-      );
-      rect.addEventListener("mouseleave", () => hideTooltip(tooltip));
-
-      rect.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        openDetails(
-          container,
-          details,
-          title,
-          v,
-          row.notes ?? [],
-          drilldown
-        );
-      });
-
-      svg.appendChild(rect);
-    });
-  });
-}
-
-
-  // LINE / AREA ---------------------------------------------------------------
-
-private renderLine(
-  container: HTMLElement,
-  spec: ChartSpec,
-  data: QueryResult,
-  isArea: boolean
-) {
-  const opts: any = spec.options ?? {};
-  const background: string | undefined = opts.background;
-  const drilldown: boolean = opts.drilldown ?? true;
-
-  const rows = data.rows ?? [];
-  if (!rows.length) {
-    container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
-    return;
-  }
-
-  const { inner, svg, tooltip, details } = ensureContainer(container, background);
-  const vw = container.getBoundingClientRect().width || 600;
-  const width = Math.max(vw, 480);
-  inner.style.width = width + "px";
-
-  const PAD_L = 40;
-  const PAD_R = 16;
-  const PAD_T = 18;
-  const PAD_B = 24;
-
-  const height = DEFAULT_H;
-  svg.setAttribute("height", String(height));
-
-  const plotW = width - PAD_L - PAD_R;
-  const plotH = height - PAD_T - PAD_B;
-
-  // --- séries --------------------------------------------------------
-  const seriesMap = new Map<string, QueryResultRow[]>();
-  for (const r of rows) {
-    const key = r.series != null ? String(r.series) : "__default__";
-    const arr = seriesMap.get(key) ?? [];
-    arr.push(r);
-    seriesMap.set(key, arr);
-  }
-  const seriesKeys = Array.from(seriesMap.keys());
-
-  // --- domínio X (sempre tratamos como categorias em ordem dos dados) ---
-  const xValues: any[] = [];
-  const seenX = new Set<string>();
-  for (const r of rows) {
-    const k = String(r.x);
-    if (!seenX.has(k)) {
-      seenX.add(k);
-      xValues.push(r.x);
+    const seriesMap = new Map<string, QueryResultRow[]>();
+    for (const r of rows) {
+      const key = r.series != null ? String(r.series) : "__default__";
+      const arr = seriesMap.get(key) ?? [];
+      arr.push(r);
+      seriesMap.set(key, arr);
     }
-  }
+    const seriesKeys = Array.from(seriesMap.keys());
 
-  const nCats = xValues.length || 1;
+    const xValues: any[] = [];
+    const seenX = new Set<string>();
+    for (const r of rows) {
+      const k = String(r.x);
+      if (!seenX.has(k)) {
+        seenX.add(k);
+        xValues.push(r.x);
+      }
+    }
 
-  const xScale = (x: any) => {
-    const key = String(x);
-    const idx = xValues.findIndex((v) => String(v) === key);
-    if (idx < 0) return PAD_L;
-    if (nCats === 1) return PAD_L + plotW / 2;
-    return PAD_L + (idx / (nCats - 1)) * plotW;
-  };
+    const nCats = xValues.length || 1;
 
-  const xLabelOf = (x: any) => String(x);
+    const xScale = (x: any) => {
+      const key = String(x);
+      const idx = xValues.findIndex((v) => String(v) === key);
+      if (idx < 0) return PAD_L2;
+      if (nCats === 1) return PAD_L2 + plotW / 2;
+      return PAD_L2 + (idx / (nCats - 1)) * plotW;
+    };
 
-  // --- domínio Y -----------------------------------------------------
-  let minY = Number.POSITIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const r of rows) {
-    if (r.y < minY) minY = r.y;
-    if (r.y > maxY) maxY = r.y;
-  }
-  if (!isFinite(minY) || !isFinite(maxY)) {
-    minY = 0;
-    maxY = 1;
-  }
-  if (minY === maxY) {
-    if (minY === 0) {
-      maxY = 1;
-    } else {
+    const xLabelOf = (x: any) => String(x);
+
+    let minY = Number.POSITIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const r of rows) {
+      if (r.y < minY) minY = r.y;
+      if (r.y > maxY) maxY = r.y;
+    }
+    if (!isFinite(minY) || !isFinite(maxY)) {
       minY = 0;
+      maxY = 1;
     }
-  }
-
-  const yScale = (v: number) =>
-    PAD_T + plotH - ((v - minY) / (maxY - minY || 1)) * plotH;
-
-  // --- eixo Y (grid) -------------------------------------------------
-  const yTicks = 4;
-  for (let i = 0; i <= yTicks; i++) {
-    const t = minY + ((maxY - minY) * i) / yTicks;
-    const y = yScale(t);
-
-    const line = document.createElementNS(svg.namespaceURI, "line");
-    line.setAttribute("x1", String(PAD_L));
-    line.setAttribute("y1", String(y));
-    line.setAttribute("x2", String(width - PAD_R));
-    line.setAttribute("y2", String(y));
-    line.setAttribute("stroke", "#cccccc");
-    line.setAttribute("stroke-opacity", "0.25");
-    svg.appendChild(line);
-
-    const label = document.createElementNS(svg.namespaceURI, "text");
-    label.setAttribute("x", String(PAD_L - 4));
-    label.setAttribute("y", String(y + 3));
-    label.setAttribute("text-anchor", "end");
-    label.setAttribute("font-size", "10");
-    label.setAttribute("fill", "#111111");
-    label.textContent =
-      Math.abs(t) >= 100 ? String(Math.round(t)) : String(Math.round(t * 10) / 10);
-    svg.appendChild(label);
-  }
-
-  // --- legenda (se tiver mais de uma série de verdade) ---------------
-  const displaySeriesNames = seriesKeys.filter((k) => k !== "__default__");
-  if (displaySeriesNames.length > 1) {
-    const legend = container.createDiv({ cls: "chart-notes-legend" });
-    displaySeriesNames.forEach((key, idx) => {
-      const label = key;
-      const item = legend.createDiv({ cls: "chart-notes-legend-item" });
-      const swatch = item.createDiv();
-      swatch.style.width = "10px";
-      swatch.style.height = "10px";
-      swatch.style.borderRadius = "999px";
-      swatch.style.backgroundColor = colorFor(label, idx);
-      item.createSpan({ text: label });
-    });
-  }
-
-  // --- desenhar séries -----------------------------------------------
-  seriesKeys.forEach((sKey, sIndex) => {
-    const seriesRows = seriesMap.get(sKey)!;
-    if (!seriesRows?.length) return;
-
-    const color = sKey === "__default__"
-      ? colorFor("line", sIndex)
-      : colorFor(sKey, sIndex);
-
-    // garantir ordem por X (na ordem que aparecem em xValues)
-    const ordered = [...seriesRows].sort((a, b) => {
-      const ia = xValues.findIndex((v) => String(v) === String(a.x));
-      const ib = xValues.findIndex((v) => String(v) === String(b.x));
-      return ia - ib;
-    });
-
-    // path base
-    let d = "";
-    ordered.forEach((r, idx) => {
-      const x = xScale(r.x);
-      const y = yScale(r.y);
-      d += (idx === 0 ? "M " : " L ") + x + " " + y;
-    });
-
-    if (isArea) {
-      // área tipo "area chart"
-      const first = ordered[0];
-      const last = ordered[ordered.length - 1];
-      const xFirst = xScale(first.x);
-      const xLast = xScale(last.x);
-      const baselineY = yScale(minY);
-
-      d += ` L ${xLast} ${baselineY} L ${xFirst} ${baselineY} Z`;
-
-      const path = document.createElementNS(svg.namespaceURI, "path");
-      path.setAttribute("d", d);
-      path.setAttribute("fill", color);
-      path.setAttribute("fill-opacity", "0.18");
-      path.setAttribute("stroke", color);
-      path.setAttribute("stroke-width", "1.5");
-      svg.appendChild(path);
-    } else {
-      // linha simples
-      const path = document.createElementNS(svg.namespaceURI, "path");
-      path.setAttribute("d", d);
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", color);
-      path.setAttribute("stroke-width", "2");
-      svg.appendChild(path);
+    if (minY === maxY) {
+      if (minY === 0) {
+        maxY = 1;
+      } else {
+        minY = 0;
+      }
     }
 
-    // pontos com tooltip + clique
-    ordered.forEach((r) => {
-      const x = xScale(r.x);
-      const y = yScale(r.y);
+    const yScale = (v: number) =>
+      PAD_T2 + plotH - ((v - minY) / (maxY - minY || 1)) * plotH;
 
-      const dot = document.createElementNS(svg.namespaceURI, "circle");
-      dot.setAttribute("cx", String(x));
-      dot.setAttribute("cy", String(y));
-      dot.setAttribute("r", "3");
-      dot.setAttribute("fill", "#ffffff");
-      dot.setAttribute("stroke", color);
-      dot.setAttribute("stroke-width", "1.5");
-      dot.style.cursor = "pointer";
+    const yTicks = 4;
+    for (let i = 0; i <= yTicks; i++) {
+      const t = minY + ((maxY - minY) * i) / yTicks;
+      const y = yScale(t);
 
-      const xLabel = xLabelOf(r.x);
-      const sName = sKey === "__default__" ? "" : String(r.series);
-      const title = sName ? `${sName} @ ${xLabel}` : xLabel;
-      const body = `valor: ${Math.round(r.y * 100) / 100}`;
+      const line = document.createElementNS(svg.namespaceURI, "line");
+      line.setAttribute("x1", String(PAD_L2));
+      line.setAttribute("y1", String(y));
+      line.setAttribute("x2", String(width - PAD_R2));
+      line.setAttribute("y2", String(y));
+      line.setAttribute("stroke", "#cccccc");
+      line.setAttribute("stroke-opacity", "0.25");
+      svg.appendChild(line);
 
-      dot.addEventListener("mouseenter", (ev) =>
-        showTooltip(
-          container,
-          tooltip,
-          title,
-          body,
-          r.notes?.length ?? 0,
-          ev as MouseEvent
-        )
-      );
-      dot.addEventListener("mouseleave", () => hideTooltip(tooltip));
+      const label = document.createElementNS(svg.namespaceURI, "text");
+      label.setAttribute("x", String(PAD_L2 - 4));
+      label.setAttribute("y", String(y + 3));
+      label.setAttribute("text-anchor", "end");
+      label.setAttribute("font-size", "10");
+      label.setAttribute("fill", "#111111");
+      label.textContent =
+        Math.abs(t) >= 100
+          ? String(Math.round(t))
+          : String(Math.round(t * 10) / 10);
+      svg.appendChild(label);
+    }
 
-      dot.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        openDetails(
-          container,
-          details,
-          title,
-          r.y,
-          r.notes ?? [],
-          drilldown
-        );
+    const displaySeriesNames = seriesKeys.filter((k) => k !== "__default__");
+    if (displaySeriesNames.length > 1) {
+      const legend = container.createDiv({ cls: "chart-notes-legend" });
+      displaySeriesNames.forEach((key, idx) => {
+        const label = key;
+        const item = legend.createDiv({ cls: "chart-notes-legend-item" });
+        const swatch = item.createDiv();
+        swatch.style.width = "10px";
+        swatch.style.height = "10px";
+        swatch.style.borderRadius = "999px";
+        swatch.style.backgroundColor = colorFor(label, idx);
+        item.createSpan({ text: label });
+      });
+    }
+
+    seriesKeys.forEach((sKey, sIndex) => {
+      const seriesRows = seriesMap.get(sKey)!;
+      if (!seriesRows?.length) return;
+
+      const color =
+        sKey === "__default__"
+          ? colorFor("line", sIndex)
+          : colorFor(sKey, sIndex);
+
+      const ordered = [...seriesRows].sort((a, b) => {
+        const ia = xValues.findIndex((v) => String(v) === String(a.x));
+        const ib = xValues.findIndex((v) => String(v) === String(b.x));
+        return ia - ib;
       });
 
-      svg.appendChild(dot);
+      let d = "";
+      ordered.forEach((r, idx) => {
+        const x = xScale(r.x);
+        const y = yScale(r.y);
+        d += (idx === 0 ? "M " : " L ") + x + " " + y;
+      });
+
+      if (isArea) {
+        const first = ordered[0];
+        const last = ordered[ordered.length - 1];
+        const xFirst = xScale(first.x);
+        const xLast = xScale(last.x);
+        const baselineY = yScale(minY);
+
+        d += ` L ${xLast} ${baselineY} L ${xFirst} ${baselineY} Z`;
+
+        const path = document.createElementNS(
+          svg.namespaceURI,
+          "path"
+        ) as SVGPathElement;
+        path.setAttribute("d", d);
+        path.setAttribute("fill", color);
+        path.setAttribute("fill-opacity", "0.18");
+        path.setAttribute("stroke", color);
+        path.setAttribute("stroke-width", "1.5");
+        svg.appendChild(path);
+      } else {
+        const path = document.createElementNS(
+          svg.namespaceURI,
+          "path"
+        ) as SVGPathElement;
+        path.setAttribute("d", d);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", color);
+        path.setAttribute("stroke-width", "2");
+        svg.appendChild(path);
+      }
+
+      ordered.forEach((r) => {
+        const x = xScale(r.x);
+        const y = yScale(r.y);
+
+        const dot = document.createElementNS(
+          svg.namespaceURI,
+          "circle"
+        ) as SVGCircleElement;
+        dot.setAttribute("cx", String(x));
+        dot.setAttribute("cy", String(y));
+        dot.setAttribute("r", "3");
+        dot.setAttribute("fill", "#ffffff");
+        dot.setAttribute("stroke", color);
+        dot.setAttribute("stroke-width", "1.5");
+        dot.style.cursor = "pointer";
+
+        const xLabel = xLabelOf(r.x);
+        const sName = sKey === "__default__" ? "" : String(r.series);
+        const title = sName ? `${sName} @ ${xLabel}` : xLabel;
+        const body = `valor: ${Math.round(r.y * 100) / 100}`;
+
+        dot.addEventListener("mouseenter", (ev: MouseEvent) =>
+          showTooltip(container, tooltip, title, body, r.notes?.length ?? 0, ev)
+        );
+        dot.addEventListener("mouseleave", () => hideTooltip(tooltip));
+
+        dot.addEventListener("click", (ev: MouseEvent) => {
+          ev.preventDefault();
+          openDetails(
+            container,
+            details,
+            title,
+            r.y,
+            r.notes ?? [],
+            drilldown
+          );
+        });
+
+        svg.appendChild(dot);
+      });
     });
-  });
-}
-
-
+  }
 
   // PIE -----------------------------------------------------------------------
-  private renderPie(container: HTMLElement, spec: ChartSpec, data: QueryResult) {
+  private renderPie(
+    container: HTMLElement,
+    spec: ChartSpec,
+    data: QueryResult
+  ) {
     const { background, drilldown = true } = spec.options ?? {};
     if (data.rows.length === 0) {
       container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
@@ -1028,7 +1002,10 @@ private renderLine(
       const y2 = cy + r * Math.sin(acc + angle);
       const largeArc = angle > Math.PI ? 1 : 0;
 
-      const path = document.createElementNS(svg.namespaceURI, "path");
+      const path = document.createElementNS(
+        svg.namespaceURI,
+        "path"
+      ) as SVGPathElement;
       const d = [
         `M ${cx} ${cy}`,
         `L ${x1} ${y1}`,
@@ -1039,15 +1016,8 @@ private renderLine(
       path.setAttribute("fill", colorFor(row.series ?? label, idx));
       path.style.cursor = "pointer";
 
-      path.addEventListener("mouseenter", (ev) =>
-        showTooltip(
-          container,
-          tooltip,
-          label,
-          v,
-          row.notes?.length ?? 0,
-          ev as MouseEvent
-        )
+      path.addEventListener("mouseenter", (ev: MouseEvent) =>
+        showTooltip(container, tooltip, label, v, row.notes?.length ?? 0, ev)
       );
       path.addEventListener("mouseleave", () => hideTooltip(tooltip));
       path.addEventListener("click", () =>
@@ -1145,7 +1115,10 @@ private renderLine(
       const cx = xScale(xv);
       const cy = yScale(ys[idx]);
 
-      const dot = document.createElementNS(svg.namespaceURI, "circle");
+      const dot = document.createElementNS(
+        svg.namespaceURI,
+        "circle"
+      ) as SVGCircleElement;
       dot.setAttribute("cx", String(cx));
       dot.setAttribute("cy", String(cy));
       dot.setAttribute("r", "4");
@@ -1159,27 +1132,32 @@ private renderLine(
           ? row.x
           : String(row.x);
 
-      dot.addEventListener("mouseenter", (ev) =>
-        showTooltip(
-          container,
-          tooltip,
-          label,
-          row.y,
-          row.notes?.length ?? 0,
-          ev as MouseEvent
-        )
+      dot.addEventListener("mouseenter", (ev: MouseEvent) =>
+        showTooltip(container, tooltip, label, row.y, row.notes?.length ?? 0, ev)
       );
       dot.addEventListener("mouseleave", () => hideTooltip(tooltip));
-      dot.addEventListener("click", () =>
-        openDetails(container, details, label, row.y, row.notes ?? [], drilldown)
-      );
+      dot.addEventListener("click", (ev: MouseEvent) => {
+        ev.preventDefault();
+        openDetails(
+          container,
+          details,
+          label,
+          row.y,
+          row.notes ?? [],
+          drilldown
+        );
+      });
 
       svg.appendChild(dot);
     });
   }
 
   // TABLE ---------------------------------------------------------------------
-  private renderTable(container: HTMLElement, spec: ChartSpec, data: QueryResult) {
+  private renderTable(
+    container: HTMLElement,
+    spec: ChartSpec,
+    data: QueryResult
+  ) {
     const { background } = spec.options ?? {};
     const { inner } = ensureContainer(container, background);
 
@@ -1201,9 +1179,8 @@ private renderLine(
       const ntd = tr.createEl("td");
       for (const n of row.notes ?? []) {
         const a = ntd.createEl("a", { text: n, href: "#" });
-        a.addEventListener("click", (ev) => {
+        a.addEventListener("click", (ev: MouseEvent) => {
           ev.preventDefault();
-          // @ts-ignore
           app.workspace.openLinkText(n, "", false);
         });
         ntd.createSpan({ text: " " });
@@ -1212,681 +1189,658 @@ private renderLine(
   }
 
   // GANTT ---------------------------------------------------------------------
-private renderGantt(
-  container: HTMLElement,
-  spec: ChartSpec,
-  data: QueryResult,
-  ctx?: RenderContext
-) {
-  const opts: any = spec.options ?? {};
-  const background: string | undefined = opts.background;
-  const drilldown: boolean = opts.drilldown ?? true;
-  const editable: boolean = true;
+  private renderGantt(
+    container: HTMLElement,
+    spec: ChartSpec,
+    data: QueryResult,
+    ctx?: RenderContext
+  ) {
+    const opts: any = spec.options ?? {};
+    const background: string | undefined = opts.background;
+    const drilldown: boolean = opts.drilldown ?? true;
+    const editable: boolean = true;
 
-  // helper: normaliza nome completo (sem [[ ]] e sem path)
-  const normalizeFullName = (raw: any): string => {
-    if (raw == null) return "";
-    let s = String(raw).trim();
-    if (!s) return "";
+    const normalizeFullName = (raw: any): string => {
+      if (raw == null) return "";
+      let s = String(raw).trim();
+      if (!s) return "";
 
-    const m = s.match(/^\[\[(.+?)\]\]$/);
-    if (m) s = m[1];
+      const m = s.match(/^\[\[(.+?)\]\]$/);
+      if (m) s = m[1];
 
-    const lastSlash = s.lastIndexOf("/");
-    if (lastSlash >= 0 && lastSlash < s.length - 1) {
-      s = s.slice(lastSlash + 1);
-    }
-    return s;
-  };
-
-  // limpa renderização anterior (mantém o título)
-  Array.from(
-    container.querySelectorAll(
-      ".gantt-zoom-controls, .gantt-label-floating-btn, .chart-notes-scroll, .chart-notes-details, .chart-notes-tooltip, .prop-charts-empty"
-    )
-  ).forEach((el) => el.remove());
-
-  if (data.rows.length === 0) {
-    container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
-    return;
-  }
-
-  const tasksRaw = data.rows.filter((r) => r.start && r.end);
-  if (tasksRaw.length === 0) {
-    container.createDiv({
-      cls: "prop-charts-empty",
-      text: "Gantt: faltam campos de data.",
-    });
-    return;
-  }
-
-  const enc = spec.encoding as any;
-  const groupField = enc.group;       // agrupar linhas (ex: projects)
-  const durationField = enc.duration; // estimate em minutos (ex: timeEstimate)
-
-  const getPropValue = (
-    props: Record<string, any> | undefined,
-    key: string | undefined
-  ): any => {
-    if (!props || !key) return undefined;
-    const v = props[key];
-    if (Array.isArray(v)) return v[0];
-    return v;
-  };
-
-  const tasks = tasksRaw.map((r) => {
-    const start = r.start as Date;
-    const end = r.end as Date;
-    const props = (r as any).props as Record<string, any> | undefined;
-
-    const rawLabel =
-      typeof r.x === "string"
-        ? r.x
-        : r.x instanceof Date
-        ? formatDateShort(start)
-        : String(r.x);
-
-    const fullName = normalizeFullName(rawLabel);
-
-    let groupKey: string;
-    const fromGroupField = groupField ? getPropValue(props, groupField) : undefined;
-    if (fromGroupField != null) {
-      groupKey = String(fromGroupField);
-    } else if (r.series != null) {
-      groupKey = String(r.series);
-    } else {
-      groupKey = fullName;
-    }
-
-    const notePath = r.notes?.[0];
-    const noteTitle =
-      notePath
-        ? (notePath.replace(/\.md$/i, "").split("/").pop() ?? notePath)
-        : fullName;
-
-    const due = (r as any).due as Date | undefined;
-
-    let estMinutes: number | undefined;
-    const estRaw = getPropValue(props, durationField);
-    if (estRaw != null) {
-      const n = Number(estRaw);
-      if (!Number.isNaN(n)) estMinutes = n;
-    }
-
-    return {
-      row: r,
-      start,
-      end,
-      props,
-      fullName,
-      groupKey,
-      notePath,
-      noteTitle,
-      due,
-      estMinutes,
+      const lastSlash = s.lastIndexOf("/");
+      if (lastSlash >= 0 && lastSlash < s.length - 1) {
+        s = s.slice(lastSlash + 1);
+      }
+      return s;
     };
-  });
 
-  const validTasks = tasks.filter(
-    (t) =>
-      t.start instanceof Date &&
-      !isNaN(t.start.getTime()) &&
-      t.end instanceof Date &&
-      !isNaN(t.end.getTime())
-  );
-  if (validTasks.length === 0) {
-    container.createDiv({
-      cls: "prop-charts-empty",
-      text: "Gantt: datas inválidas.",
-    });
-    return;
-  }
+    Array.from(
+      container.querySelectorAll(
+        ".gantt-zoom-controls, .gantt-label-floating-btn, .chart-notes-scroll, .chart-notes-details, .chart-notes-tooltip, .prop-charts-empty"
+      )
+    ).forEach((el) => el.remove());
 
-  // ordenação: grupo -> start -> nome
-  validTasks.sort((a, b) => {
-    if (a.groupKey < b.groupKey) return -1;
-    if (a.groupKey > b.groupKey) return 1;
-    const ta = a.start.getTime();
-    const tb = b.start.getTime();
-    if (ta !== tb) return ta - tb;
-    return a.fullName.localeCompare(b.fullName);
-  });
-
-  // cálculo de linhas (1 header de grupo + 1 task por linha)
-  const rowH = 26;
-  let totalRows = 0;
-  let lastGroup: string | null = null;
-
-  for (const t of validTasks) {
-    if (t.groupKey !== lastGroup) {
-      lastGroup = t.groupKey;
-      totalRows += 1; // header do grupo
+    if (data.rows.length === 0) {
+      container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
+      return;
     }
-    totalRows += 1;   // linha da task
-  }
 
-  // limites de datas
-  const minStart = Math.min(...validTasks.map((t) => t.start.getTime()));
-  const maxEnd = Math.max(...validTasks.map((t) => t.end.getTime()));
-  if (!isFinite(minStart) || !isFinite(maxEnd)) {
-    container.createDiv({
-      cls: "prop-charts-empty",
-      text: "Gantt: intervalo de datas inválido.",
+    const tasksRaw = data.rows.filter((r) => r.start && r.end);
+    if (tasksRaw.length === 0) {
+      container.createDiv({
+        cls: "prop-charts-empty",
+        text: "Gantt: faltam campos de data.",
+      });
+      return;
+    }
+
+    const enc = spec.encoding as any;
+    const groupField = enc.group;
+    const durationField = enc.duration;
+
+    const getPropValue = (
+      props: Record<string, any> | undefined,
+      key: string | undefined
+    ): any => {
+      if (!props || !key) return undefined;
+      const v = props[key];
+      if (Array.isArray(v)) return v[0];
+      return v;
+    };
+
+    const tasks = tasksRaw.map((r) => {
+      const start = r.start as Date;
+      const end = r.end as Date;
+      const props = (r as any).props as Record<string, any> | undefined;
+
+      const rawLabel =
+        typeof r.x === "string"
+          ? r.x
+          : r.x instanceof Date
+          ? formatDateShort(start)
+          : String(r.x);
+
+      const fullName = normalizeFullName(rawLabel);
+
+      let groupKey: string;
+      const fromGroupField = groupField ? getPropValue(props, groupField) : undefined;
+      if (fromGroupField != null) {
+        groupKey = String(fromGroupField);
+      } else if (r.series != null) {
+        groupKey = String(r.series);
+      } else {
+        groupKey = fullName;
+      }
+
+      const notePath = r.notes?.[0];
+      const noteTitle =
+        notePath
+          ? (notePath.replace(/\.md$/i, "").split("/").pop() ?? notePath)
+          : fullName;
+
+      const due = (r as any).due as Date | undefined;
+
+      let estMinutes: number | undefined;
+      const estRaw = getPropValue(props, durationField);
+      if (estRaw != null) {
+        const n = Number(estRaw);
+        if (!Number.isNaN(n)) estMinutes = n;
+      }
+
+      return {
+        row: r,
+        start,
+        end,
+        props,
+        fullName,
+        groupKey,
+        notePath,
+        noteTitle,
+        due,
+        estMinutes,
+      };
     });
-    return;
-  }
 
-  const DAY = 24 * 60 * 60 * 1000;
-  const floorToDay = (ts: number) => {
-    const d = new Date(ts);
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-  };
+    const validTasks = tasks.filter(
+      (t) =>
+        t.start instanceof Date &&
+        !isNaN(t.start.getTime()) &&
+        t.end instanceof Date &&
+        !isNaN(t.end.getTime())
+    );
+    if (validTasks.length === 0) {
+      container.createDiv({
+        cls: "prop-charts-empty",
+        text: "Gantt: datas inválidas.",
+      });
+      return;
+    }
 
-  const minDay = floorToDay(minStart);
-  const maxDay = floorToDay(maxEnd);
-
-  // --------- ESTADO: zoom e modo de label ------------------
-
-  let titleRow = container.querySelector(
-    ".prop-charts-title-row"
-  ) as HTMLElement | null;
-  if (!titleRow) {
-    titleRow = container.createDiv({ cls: "prop-charts-title-row" });
-  }
-
-  let zoomMode =
-    container.dataset.ganttZoomMode || (opts.zoomMode as string) || "100"; // "fit", "100", "150", "200"
-  container.dataset.ganttZoomMode = zoomMode;
-
-  let labelMode =
-    container.dataset.ganttLabelMode || (opts.labelMode as string) || "compact";
-  container.dataset.ganttLabelMode = labelMode;
-
-  const zoomBar = titleRow.createDiv({ cls: "gantt-zoom-controls" });
-
-  // botões de zoom
-  const zoomOptions: { id: string; label: string }[] = [
-    { id: "fit", label: "Fit" },
-    { id: "100", label: "100%" },
-    { id: "150", label: "150%" },
-    { id: "200", label: "200%" },
-  ];
-
-  zoomOptions.forEach((opt) => {
-    const btn = zoomBar.createEl("button", {
-      cls: "gantt-zoom-btn",
-      text: opt.label,
+    validTasks.sort((a, b) => {
+      if (a.groupKey < b.groupKey) return -1;
+      if (a.groupKey > b.groupKey) return 1;
+      const ta = a.start.getTime();
+      const tb = b.start.getTime();
+      if (ta !== tb) return ta - tb;
+      return a.fullName.localeCompare(b.fullName);
     });
-    if (opt.id === zoomMode) btn.addClass("is-active");
-    btn.addEventListener("click", (ev) => {
+
+    const rowH = 26;
+    let totalRows = 0;
+    let lastGroup: string | null = null;
+
+    for (const t of validTasks) {
+      if (t.groupKey !== lastGroup) {
+        lastGroup = t.groupKey;
+        totalRows += 1;
+      }
+      totalRows += 1;
+    }
+
+    const minStart = Math.min(...validTasks.map((t) => t.start.getTime()));
+    const maxEnd = Math.max(...validTasks.map((t) => t.end.getTime()));
+    if (!isFinite(minStart) || !isFinite(maxEnd)) {
+      container.createDiv({
+        cls: "prop-charts-empty",
+        text: "Gantt: intervalo de datas inválido.",
+      });
+      return;
+    }
+
+    const DAY = 24 * 60 * 60 * 1000;
+    const floorToDay = (ts: number) => {
+      const d = new Date(ts);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime();
+    };
+
+    const minDay = floorToDay(minStart);
+    const maxDay = floorToDay(maxEnd);
+
+    let titleRow = container.querySelector(
+      ".prop-charts-title-row"
+    ) as HTMLElement | null;
+    if (!titleRow) {
+      titleRow = container.createDiv({ cls: "prop-charts-title-row" });
+    }
+
+    let zoomMode =
+      container.dataset.ganttZoomMode || (opts.zoomMode as string) || "100";
+    container.dataset.ganttZoomMode = zoomMode;
+
+    let labelMode =
+      container.dataset.ganttLabelMode || (opts.labelMode as string) || "compact";
+    container.dataset.ganttLabelMode = labelMode;
+
+    const zoomBar = titleRow.createDiv({ cls: "gantt-zoom-controls" });
+
+    const zoomOptions: { id: string; label: string }[] = [
+      { id: "fit", label: "Fit" },
+      { id: "100", label: "100%" },
+      { id: "150", label: "150%" },
+      { id: "200", label: "200%" },
+    ];
+
+    zoomOptions.forEach((opt) => {
+      const btn = zoomBar.createEl("button", {
+        cls: "gantt-zoom-btn",
+        text: opt.label,
+      });
+      if (opt.id === zoomMode) btn.addClass("is-active");
+      btn.addEventListener("click", (ev: MouseEvent) => {
+        ev.preventDefault();
+        container.dataset.ganttZoomMode = opt.id;
+        this.renderGantt(container, spec, data, ctx);
+      });
+    });
+
+    const fullBtn = zoomBar.createEl("button", {
+      cls: "gantt-zoom-btn gantt-fullscreen-btn",
+      text: "⤢",
+    });
+    fullBtn.addEventListener("click", (ev: MouseEvent) => {
       ev.preventDefault();
-      container.dataset.ganttZoomMode = opt.id;
+      const zoomTrigger = container.querySelector(
+        ".chart-notes-zoom-button"
+      ) as HTMLElement | null;
+      if (zoomTrigger) {
+        zoomTrigger.click();
+      }
+    });
+
+    const baseLabelWidthRaw = Number(opts.labelWidth);
+    const baseLabelWidth =
+      !Number.isNaN(baseLabelWidthRaw) && baseLabelWidthRaw > 120
+        ? baseLabelWidthRaw
+        : 260;
+
+    const labelModeNow = container.dataset.ganttLabelMode || "compact";
+    const labelColWidth =
+      labelModeNow === "wide" ? baseLabelWidth + 160 : baseLabelWidth;
+
+    const containerWidth = container.getBoundingClientRect().width || 600;
+    const baseWidth = Math.max(containerWidth, 820);
+
+    let width: number;
+    if (zoomMode === "fit") {
+      width = containerWidth;
+    } else {
+      const factor = Number(zoomMode) / 100 || 1;
+      width = baseWidth * factor;
+    }
+
+    const { inner, svg, tooltip, details } = ensureContainer(
+      container,
+      background
+    );
+    inner.style.width = width + "px";
+
+    const drawMultilineLabel = (
+      text: string,
+      x: number,
+      centerY: number,
+      maxWidthPx: number,
+      fontSize: number,
+      fontWeight: string | null,
+      onEnter?: (ev: MouseEvent) => void,
+      onLeave?: () => void,
+      onClick?: (ev: MouseEvent) => void
+    ) => {
+      if (!text) return;
+
+      const usableWidth = Math.max(40, maxWidthPx - 8);
+      const approxCharWidth = 6;
+      const maxChars = Math.max(8, Math.floor(usableWidth / approxCharWidth));
+
+      const words = text.split(/\s+/);
+      const lines: string[] = [];
+      let current = "";
+
+      for (const w of words) {
+        if (!current) {
+          current = w;
+          continue;
+        }
+        if ((current + " " + w).length <= maxChars) {
+          current += " " + w;
+        } else {
+          lines.push(current);
+          current = w;
+        }
+      }
+      if (current) lines.push(current);
+
+      const lineHeight = fontSize + 2;
+      const totalHeight = lines.length * lineHeight;
+      const firstBaseline = centerY - totalHeight / 2 + fontSize;
+
+      lines.forEach((line, idx) => {
+        const tNode = document.createElementNS(svg.namespaceURI, "text");
+        tNode.setAttribute("x", String(x));
+        tNode.setAttribute("y", String(firstBaseline + idx * lineHeight));
+        tNode.setAttribute("text-anchor", "start");
+        tNode.setAttribute("font-size", String(fontSize));
+        tNode.setAttribute("fill", "#111111");
+        if (fontWeight) tNode.setAttribute("font-weight", fontWeight);
+        tNode.textContent = line;
+
+        if (onEnter) {
+          tNode.addEventListener("mouseenter", (ev: MouseEvent) =>
+            onEnter(ev)
+          );
+        }
+        if (onLeave) {
+          tNode.addEventListener("mouseleave", () => onLeave());
+        }
+        if (onClick) {
+          (tNode as any).style.cursor = "pointer";
+          tNode.addEventListener("click", (ev: MouseEvent) => onClick(ev));
+        }
+
+        svg.appendChild(tNode);
+      });
+    };
+
+    const PAD_TOP = PAD_T;
+    const PAD_BOTTOM = PAD_B;
+    const PAD_RIGHT = PAD_R;
+
+    const height = Math.max(
+      DEFAULT_H,
+      PAD_TOP + PAD_BOTTOM + totalRows * rowH + 24
+    );
+    svg.setAttribute("height", String(height));
+
+    const plotW = width - labelColWidth - PAD_RIGHT;
+    const axisY = PAD_TOP + 6;
+
+    svg.style.color = "#111111";
+
+    const rawSpan = maxDay + DAY - minDay || 1;
+    const domainMin = minDay - rawSpan * 0.02;
+    const domainMax = maxDay + DAY + rawSpan * 0.08;
+
+    const xScale = (ts: number) =>
+      labelColWidth + ((ts - domainMin) / (domainMax - domainMin)) * plotW;
+
+    const spanDaysVisible = (domainMax - domainMin) / DAY;
+
+    const idealPixelPerTick = 90;
+    const maxTicks = Math.max(
+      4,
+      Math.min(12, Math.floor(plotW / idealPixelPerTick) || 4)
+    );
+    const rawStepDays = spanDaysVisible / maxTicks;
+
+    const candidates = [1, 2, 3, 5, 7, 10, 14, 21, 30, 60, 90, 180, 365];
+    let stepDays = candidates[candidates.length - 1];
+    for (const c of candidates) {
+      if (c >= rawStepDays) {
+        stepDays = c;
+        break;
+      }
+    }
+
+    const tickTimes: number[] = [];
+    const firstTick = floorToDay(domainMin);
+    for (let ts = firstTick; ts <= domainMax + 0.5 * DAY; ts += stepDays * DAY) {
+      tickTimes.push(ts);
+    }
+
+    const axisX = document.createElementNS(svg.namespaceURI, "line");
+    axisX.setAttribute("x1", String(labelColWidth));
+    axisX.setAttribute("y1", String(axisY));
+    axisX.setAttribute("x2", String(width - PAD_RIGHT));
+    axisX.setAttribute("y2", String(axisY));
+    axisX.setAttribute("stroke", "#111111");
+    svg.appendChild(axisX);
+
+    for (const ts of tickTimes) {
+      const x = xScale(ts);
+
+      const grid = document.createElementNS(svg.namespaceURI, "line");
+      grid.setAttribute("x1", String(x));
+      grid.setAttribute("y1", String(axisY));
+      grid.setAttribute("x2", String(x));
+      grid.setAttribute("y2", String(height - PAD_BOTTOM));
+      grid.setAttribute("stroke", "#111111");
+      grid.setAttribute("stroke-opacity", "0.20");
+      grid.setAttribute("stroke-dasharray", "2,4");
+      svg.appendChild(grid);
+
+      const label = document.createElementNS(svg.namespaceURI, "text");
+      label.setAttribute("x", String(x));
+      label.setAttribute("y", String(axisY - 4));
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("font-size", "10");
+      label.setAttribute("fill", "#111111");
+      label.textContent = formatDateShort(new Date(ts));
+      svg.appendChild(label);
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTs = today.getTime();
+    if (todayTs >= domainMin && todayTs <= domainMax) {
+      const xToday = xScale(todayTs);
+      const todayLine = document.createElementNS(svg.namespaceURI, "line");
+      todayLine.setAttribute("x1", String(xToday));
+      todayLine.setAttribute("y1", String(axisY));
+      todayLine.setAttribute("x2", String(xToday));
+      todayLine.setAttribute("y2", String(height - PAD_BOTTOM));
+      todayLine.setAttribute("stroke", "#4caf50");
+      todayLine.setAttribute("stroke-width", "2");
+      todayLine.setAttribute("stroke-dasharray", "4,2");
+      svg.appendChild(todayLine);
+
+      const todayLabel = document.createElementNS(svg.namespaceURI, "text");
+      todayLabel.setAttribute("x", String(xToday + 4));
+      todayLabel.setAttribute("y", String(axisY + 12));
+      todayLabel.setAttribute("font-size", "10");
+      todayLabel.setAttribute("fill", "#4caf50");
+      todayLabel.textContent = "hoje";
+      svg.appendChild(todayLabel);
+    }
+
+    const labelToggle = inner.createEl("button", {
+      cls: "gantt-label-floating-btn",
+      text: "↔",
+    });
+    labelToggle.setAttr(
+      "title",
+      labelModeNow === "wide" ? "Compactar nomes" : "Expandir nomes"
+    );
+    labelToggle.style.left = `${labelColWidth}px`;
+    labelToggle.style.top = `4px`;
+    labelToggle.addEventListener("click", (ev: MouseEvent) => {
+      ev.preventDefault();
+      const current = container.dataset.ganttLabelMode || "compact";
+      const next = current === "wide" ? "compact" : "wide";
+      container.dataset.ganttLabelMode = next;
       this.renderGantt(container, spec, data, ctx);
     });
-  });
 
-  // fullscreen: reusa o botão de zoom modal existente (escondido por CSS)
-  const fullBtn = zoomBar.createEl("button", {
-    cls: "gantt-zoom-btn gantt-fullscreen-btn",
-    text: "⤢",
-  });
-  fullBtn.addEventListener("click", (ev) => {
-    ev.preventDefault();
-    const zoomTrigger = container.querySelector(
-      ".chart-notes-zoom-button"
-    ) as HTMLElement | null;
-    if (zoomTrigger) {
-      zoomTrigger.click();
-    }
-  });
+    const defaultExtraFields = ["status", "priority"];
+    const optTooltipFields = Array.isArray(opts.tooltipFields)
+      ? opts.tooltipFields.map((s: any) => String(s))
+      : null;
+    const tooltipFields: string[] =
+      optTooltipFields && optTooltipFields.length
+        ? optTooltipFields
+        : defaultExtraFields;
 
-  // largura base da coluna de labels
-  const baseLabelWidthRaw = Number(opts.labelWidth);
-  const baseLabelWidth =
-    !Number.isNaN(baseLabelWidthRaw) && baseLabelWidthRaw > 120
-      ? baseLabelWidthRaw
-      : 260;
+    let rowIndex = 0;
+    let currentGroup: string | null = null;
 
-  const labelModeNow = container.dataset.ganttLabelMode || "compact";
-  const labelColWidth =
-    labelModeNow === "wide" ? baseLabelWidth + 160 : baseLabelWidth;
+    for (const t of validTasks) {
+      const start = t.start;
+      const end = t.end;
+      const durationMin = (end.getTime() - start.getTime()) / 60000;
 
-  // largura do gráfico
-  const containerWidth = container.getBoundingClientRect().width || 600;
-  const baseWidth = Math.max(containerWidth, 820);
+      const props = t.props;
+      const notePath = t.notePath;
+      const noteTitle = t.noteTitle;
+      const noteCount = t.row.notes?.length ?? 0;
+      const due = t.due;
+      const estMinutes = t.estMinutes;
 
-  let width: number;
-  if (zoomMode === "fit") {
-    width = containerWidth;
-  } else {
-    const factor = Number(zoomMode) / 100 || 1;
-    width = baseWidth * factor;
-  }
+      const infoLines: string[] = [];
+      infoLines.push(`${formatDateShort(start)} → ${formatDateShort(end)}`);
 
-  const { inner, svg, tooltip, details } = ensureContainer(container, background);
-  inner.style.width = width + "px";
-
-  // helper: label multilinha com eventos
-  const drawMultilineLabel = (
-    text: string,
-    x: number,
-    centerY: number,
-    maxWidthPx: number,
-    fontSize: number,
-    fontWeight: string | null,
-    onEnter?: (ev: MouseEvent) => void,
-    onLeave?: () => void,
-    onClick?: (ev: MouseEvent) => void
-  ) => {
-    if (!text) return;
-
-    const usableWidth = Math.max(40, maxWidthPx - 8);
-    const approxCharWidth = 6;
-    const maxChars = Math.max(8, Math.floor(usableWidth / approxCharWidth));
-
-    const words = text.split(/\s+/);
-    const lines: string[] = [];
-    let current = "";
-
-    for (const w of words) {
-      if (!current) {
-        current = w;
-        continue;
-      }
-      if ((current + " " + w).length <= maxChars) {
-        current += " " + w;
-      } else {
-        lines.push(current);
-        current = w;
-      }
-    }
-    if (current) lines.push(current);
-
-    const lineHeight = fontSize + 2;
-    const totalHeight = lines.length * lineHeight;
-    const firstBaseline = centerY - totalHeight / 2 + fontSize;
-
-    lines.forEach((line, idx) => {
-      const tNode = document.createElementNS(svg.namespaceURI, "text");
-      tNode.setAttribute("x", String(x));
-      tNode.setAttribute("y", String(firstBaseline + idx * lineHeight));
-      tNode.setAttribute("text-anchor", "start");
-      tNode.setAttribute("font-size", String(fontSize));
-      tNode.setAttribute("fill", "#111111");
-      if (fontWeight) tNode.setAttribute("font-weight", fontWeight);
-      tNode.textContent = line;
-
-      if (onEnter) {
-        tNode.addEventListener("mouseenter", (ev) => onEnter(ev as MouseEvent));
-      }
-      if (onLeave) {
-        tNode.addEventListener("mouseleave", () => onLeave());
-      }
-      if (onClick) {
-        (tNode as any).style.cursor = "pointer";
-        tNode.addEventListener("click", (ev) => onClick(ev as MouseEvent));
+      if (typeof estMinutes === "number" && !Number.isNaN(estMinutes)) {
+        infoLines.push(`est: ${Math.round(estMinutes)} min`);
+      } else if (durationMin > 0) {
+        infoLines.push(`duração: ${Math.round(durationMin)} min`);
       }
 
-      svg.appendChild(tNode);
-    });
-  };
-
-  const PAD_TOP = PAD_T;
-  const PAD_BOTTOM = PAD_B;
-  const PAD_RIGHT = PAD_R;
-
-  const height = Math.max(
-    DEFAULT_H,
-    PAD_TOP + PAD_BOTTOM + totalRows * rowH + 24
-  );
-  svg.setAttribute("height", String(height));
-
-  const plotW = width - labelColWidth - PAD_RIGHT;
-  const axisY = PAD_TOP + 6;
-
-  svg.style.color = "#111111";
-
-  // domínio com margem extra
-  const rawSpan = (maxDay + DAY) - minDay || 1;
-  const domainMin = minDay - rawSpan * 0.02;
-  const domainMax = (maxDay + DAY) + rawSpan * 0.08;
-
-  const xScale = (ts: number) =>
-    labelColWidth + ((ts - domainMin) / (domainMax - domainMin)) * plotW;
-
-  // --------- TICKS de datas ---------------------------------------------
-
-  const spanDaysVisible = (domainMax - domainMin) / DAY;
-
-  const idealPixelPerTick = 90;
-  const maxTicks = Math.max(
-    4,
-    Math.min(12, Math.floor(plotW / idealPixelPerTick) || 4)
-  );
-  const rawStepDays = spanDaysVisible / maxTicks;
-
-  const candidates = [1, 2, 3, 5, 7, 10, 14, 21, 30, 60, 90, 180, 365];
-  let stepDays = candidates[candidates.length - 1];
-  for (const c of candidates) {
-    if (c >= rawStepDays) {
-      stepDays = c;
-      break;
-    }
-  }
-
-  const tickTimes: number[] = [];
-  const firstTick = floorToDay(domainMin);
-  for (let ts = firstTick; ts <= domainMax + 0.5 * DAY; ts += stepDays * DAY) {
-    tickTimes.push(ts);
-  }
-
-  // eixo principal
-  const axisX = document.createElementNS(svg.namespaceURI, "line");
-  axisX.setAttribute("x1", String(labelColWidth));
-  axisX.setAttribute("y1", String(axisY));
-  axisX.setAttribute("x2", String(width - PAD_RIGHT));
-  axisX.setAttribute("y2", String(axisY));
-  axisX.setAttribute("stroke", "#111111");
-  svg.appendChild(axisX);
-
-  // grid + labels de datas
-  for (const ts of tickTimes) {
-    const x = xScale(ts);
-
-    const grid = document.createElementNS(svg.namespaceURI, "line");
-    grid.setAttribute("x1", String(x));
-    grid.setAttribute("y1", String(axisY));
-    grid.setAttribute("x2", String(x));
-    grid.setAttribute("y2", String(height - PAD_BOTTOM));
-    grid.setAttribute("stroke", "#111111");
-    grid.setAttribute("stroke-opacity", "0.20");
-    grid.setAttribute("stroke-dasharray", "2,4");
-    svg.appendChild(grid);
-
-    const label = document.createElementNS(svg.namespaceURI, "text");
-    label.setAttribute("x", String(x));
-    label.setAttribute("y", String(axisY - 4));
-    label.setAttribute("text-anchor", "middle");
-    label.setAttribute("font-size", "10");
-    label.setAttribute("fill", "#111111");
-    label.textContent = formatDateShort(new Date(ts));
-    svg.appendChild(label);
-  }
-
-  // linha de hoje
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayTs = today.getTime();
-  if (todayTs >= domainMin && todayTs <= domainMax) {
-    const xToday = xScale(todayTs);
-    const todayLine = document.createElementNS(svg.namespaceURI, "line");
-    todayLine.setAttribute("x1", String(xToday));
-    todayLine.setAttribute("y1", String(axisY));
-    todayLine.setAttribute("x2", String(xToday));
-    todayLine.setAttribute("y2", String(height - PAD_BOTTOM));
-    todayLine.setAttribute("stroke", "#4caf50");
-    todayLine.setAttribute("stroke-width", "2");
-    todayLine.setAttribute("stroke-dasharray", "4,2");
-    svg.appendChild(todayLine);
-
-    const todayLabel = document.createElementNS(svg.namespaceURI, "text");
-    todayLabel.setAttribute("x", String(xToday + 4));
-    todayLabel.setAttribute("y", String(axisY + 12));
-    todayLabel.setAttribute("font-size", "10");
-    todayLabel.setAttribute("fill", "#4caf50");
-    todayLabel.textContent = "hoje";
-    svg.appendChild(todayLabel);
-  }
-
-  // botão flutuante de expandir/compactar labels (entre nomes e barras, no topo)
-  const labelToggle = inner.createEl("button", {
-    cls: "gantt-label-floating-btn",
-    text: "↔",
-  });
-  labelToggle.setAttr(
-    "title",
-    labelModeNow === "wide" ? "Compactar nomes" : "Expandir nomes"
-  );
-  labelToggle.style.left = `${labelColWidth}px`;
-  labelToggle.style.top = `4px`;
-  labelToggle.addEventListener("click", (ev) => {
-    ev.preventDefault();
-    const current = container.dataset.ganttLabelMode || "compact";
-    const next = current === "wide" ? "compact" : "wide";
-    container.dataset.ganttLabelMode = next;
-    this.renderGantt(container, spec, data, ctx);
-  });
-
-  // campos só pro tooltip (status, priority etc.)
-  const defaultExtraFields = ["status", "priority"];
-  const optTooltipFields = Array.isArray(opts.tooltipFields)
-    ? opts.tooltipFields.map((s: any) => String(s))
-    : null;
-  const tooltipFields: string[] =
-    optTooltipFields && optTooltipFields.length
-      ? optTooltipFields
-      : defaultExtraFields;
-
-  let rowIndex = 0;
-  let currentGroup: string | null = null;
-
-  for (const t of validTasks) {
-    const start = t.start;
-    const end = t.end;
-    const durationMin = (end.getTime() - start.getTime()) / 60000;
-
-    // infos comuns pro tooltip
-    const props = t.props;
-    const notePath = t.notePath;
-    const noteTitle = t.noteTitle;
-    const noteCount = t.row.notes?.length ?? 0;
-    const due = t.due;
-    const estMinutes = t.estMinutes;
-
-    const infoLines: string[] = [];
-    infoLines.push(`${formatDateShort(start)} → ${formatDateShort(end)}`);
-
-    if (typeof estMinutes === "number" && !Number.isNaN(estMinutes)) {
-      infoLines.push(`est: ${Math.round(estMinutes)} min`);
-    } else if (durationMin > 0) {
-      infoLines.push(`duração: ${Math.round(durationMin)} min`);
-    }
-
-    if (due instanceof Date) {
-      infoLines.push(`due: ${formatDateShort(due)}`);
-    }
-
-    for (const field of tooltipFields) {
-      const val = getPropValue(props, field);
-      if (val != null && String(val).trim() !== "") {
-        infoLines.push(`${field}: ${String(val)}`);
+      if (due instanceof Date) {
+        infoLines.push(`due: ${formatDateShort(due)}`);
       }
-    }
 
-    const tipValue = infoLines.join("<br>");
+      for (const field of tooltipFields) {
+        const val = getPropValue(props, field);
+        if (val != null && String(val).trim() !== "") {
+          infoLines.push(`${field}: ${String(val)}`);
+        }
+      }
 
-    // handler comum: clique em barra OU nome → mesma coisa
-    const handleClickTask = (ev: MouseEvent) => {
-      ev.preventDefault();
-      if (editable && notePath) {
-        new GanttEditModal(notePath, spec, ctx?.refresh, ctx?.reindexFile).open();
-      } else {
-        openDetails(
-          container,
-          details,
-          noteTitle,
-          estMinutes ?? durationMin,
-          t.row.notes ?? [],
-          drilldown
+      const tipValue = infoLines.join("<br>");
+
+      const handleClickTask = (ev: MouseEvent) => {
+        ev.preventDefault();
+        if (editable && notePath) {
+          new GanttEditModal(notePath, spec, ctx?.refresh, ctx?.reindexFile).open();
+        } else {
+          openDetails(
+            container,
+            details,
+            noteTitle,
+            estMinutes ?? durationMin,
+            t.row.notes ?? [],
+            drilldown
+          );
+        }
+      };
+
+      const handleEnter = (ev: MouseEvent) => {
+        if (noteTitle && tipValue) {
+          showTooltip(container, tooltip, noteTitle, tipValue, noteCount, ev);
+        }
+      };
+      const handleLeave = () => hideTooltip(tooltip);
+
+      if (t.groupKey !== currentGroup) {
+        currentGroup = t.groupKey;
+
+        const yGroupCenter = axisY + 8 + rowIndex * rowH + rowH / 2;
+        const groupText = normalizeFullName(currentGroup);
+
+        drawMultilineLabel(
+          groupText,
+          4,
+          yGroupCenter,
+          labelColWidth - 12,
+          11,
+          "600"
         );
-      }
-    };
 
-    const handleEnter = (ev: MouseEvent) => {
-      if (noteTitle && tipValue) {
-        showTooltip(
-          container,
-          tooltip,
-          noteTitle,
-          tipValue,
-          noteCount,
-          ev as MouseEvent
+        rowIndex += 1;
+      }
+
+      const yTop = axisY + 8 + rowIndex * rowH;
+      const barH = rowH - 10;
+      const x1 = xScale(start.getTime());
+      const x2 = xScale(end.getTime());
+      const w = Math.max(4, x2 - x1);
+
+      const fullName = t.fullName;
+
+      const rect = document.createElementNS(
+        svg.namespaceURI,
+        "rect"
+      ) as SVGRectElement;
+      rect.setAttribute("x", String(x1));
+      rect.setAttribute("y", String(yTop));
+      rect.setAttribute("width", String(w));
+      rect.setAttribute("height", String(barH));
+      rect.setAttribute("rx", "3");
+      rect.setAttribute("ry", "3");
+      rect.setAttribute("fill", colorFor(t.row.series ?? fullName, rowIndex));
+      rect.setAttribute("stroke", "rgba(0,0,0,0.25)");
+      rect.setAttribute("stroke-width", "0.5");
+      rect.style.cursor = editable && !!notePath ? "pointer" : "default";
+
+      rect.addEventListener("mouseenter", handleEnter);
+      rect.addEventListener("mouseleave", handleLeave);
+      rect.addEventListener("click", handleClickTask);
+
+      svg.appendChild(rect);
+
+      const cy = yTop + barH / 2;
+      if (w >= 6) {
+        const strokeColor = colorFor(t.row.series ?? fullName, rowIndex);
+
+        const startMarker = document.createElementNS(
+          svg.namespaceURI,
+          "circle"
+        ) as SVGCircleElement;
+        startMarker.setAttribute("cx", String(x1));
+        startMarker.setAttribute("cy", String(cy));
+        startMarker.setAttribute("r", "3.5");
+        startMarker.setAttribute("fill", "#ffffff");
+        startMarker.setAttribute("stroke", strokeColor);
+        startMarker.setAttribute("stroke-width", "1.5");
+        svg.appendChild(startMarker);
+
+        const endMarker = document.createElementNS(
+          svg.namespaceURI,
+          "circle"
+        ) as SVGCircleElement;
+        endMarker.setAttribute("cx", String(x2));
+        endMarker.setAttribute("cy", String(cy));
+        endMarker.setAttribute("r", "3.5");
+        endMarker.setAttribute("fill", "#ffffff");
+        endMarker.setAttribute("stroke", strokeColor);
+        endMarker.setAttribute("stroke-width", "1.5");
+        svg.appendChild(endMarker);
+      }
+
+      const labelCenterY = yTop + barH / 2 + 2;
+      const labelX = groupField ? 16 : 4;
+
+      if (labelModeNow === "wide") {
+        drawMultilineLabel(
+          fullName,
+          labelX,
+          labelCenterY,
+          labelColWidth - labelX - 4,
+          11,
+          null,
+          handleEnter,
+          handleLeave,
+          handleClickTask
         );
+      } else {
+        let compact = fullName;
+        const usableWidth = Math.max(40, labelColWidth - labelX - 8);
+        const approxCharWidth = 6;
+        const maxChars = Math.max(8, Math.floor(usableWidth / approxCharWidth));
+        if (compact.length > maxChars) {
+          compact = compact.slice(0, maxChars - 1) + "…";
+        }
+
+        const labelNode = document.createElementNS(
+          svg.namespaceURI,
+          "text"
+        ) as SVGTextElement;
+        labelNode.setAttribute("x", String(labelX));
+        labelNode.setAttribute("y", String(labelCenterY));
+        labelNode.setAttribute("text-anchor", "start");
+        labelNode.setAttribute("font-size", "11");
+        labelNode.setAttribute("fill", "#111111");
+        labelNode.textContent = compact;
+        (labelNode as any).style.cursor = "pointer";
+
+        labelNode.addEventListener("mouseenter", handleEnter);
+        labelNode.addEventListener("mouseleave", handleLeave);
+        labelNode.addEventListener("click", handleClickTask);
+
+        svg.appendChild(labelNode);
       }
-    };
-    const handleLeave = () => hideTooltip(tooltip);
 
-    // header de grupo (multilinha, sem clique)
-    if (t.groupKey !== currentGroup) {
-      currentGroup = t.groupKey;
-
-      const yGroupCenter = axisY + 8 + rowIndex * rowH + rowH / 2;
-      const groupText = normalizeFullName(currentGroup);
-
-      drawMultilineLabel(
-        groupText,
-        4,
-        yGroupCenter,
-        labelColWidth - 12,
-        11,
-        "600"
-      );
+      if (due instanceof Date) {
+        const xd = xScale(due.getTime());
+        const dueLine = document.createElementNS(svg.namespaceURI, "line");
+        dueLine.setAttribute("x1", String(xd));
+        dueLine.setAttribute("y1", String(yTop));
+        dueLine.setAttribute("x2", String(xd));
+        dueLine.setAttribute("y2", String(yTop + barH));
+        dueLine.setAttribute("stroke", "#ff6b6b");
+        dueLine.setAttribute("stroke-width", "2");
+        dueLine.setAttribute("stroke-dasharray", "4,2");
+        svg.appendChild(dueLine);
+      }
 
       rowIndex += 1;
     }
 
-    const yTop = axisY + 8 + rowIndex * rowH;
-    const barH = rowH - 10;
-    const x1 = xScale(start.getTime());
-    const x2 = xScale(end.getTime());
-    const w = Math.max(4, x2 - x1);
-
-    const fullName = t.fullName;
-
-    // barra principal
-    const rect = document.createElementNS(svg.namespaceURI, "rect");
-    rect.setAttribute("x", String(x1));
-    rect.setAttribute("y", String(yTop));
-    rect.setAttribute("width", String(w));
-    rect.setAttribute("height", String(barH));
-    rect.setAttribute("rx", "3");
-    rect.setAttribute("ry", "3");
-    rect.setAttribute("fill", colorFor(t.row.series ?? fullName, rowIndex));
-    rect.setAttribute("stroke", "rgba(0,0,0,0.25)");
-    rect.setAttribute("stroke-width", "0.5");
-    rect.style.cursor = editable && !!notePath ? "pointer" : "default";
-
-    rect.addEventListener("mouseenter", handleEnter);
-    rect.addEventListener("mouseleave", handleLeave);
-    rect.addEventListener("click", handleClickTask);
-
-    svg.appendChild(rect);
-
-    // marcadores de início/fim
-    const cy = yTop + barH / 2;
-    if (w >= 6) {
-      const strokeColor = colorFor(t.row.series ?? fullName, rowIndex);
-
-      const startMarker = document.createElementNS(svg.namespaceURI, "circle");
-      startMarker.setAttribute("cx", String(x1));
-      startMarker.setAttribute("cy", String(cy));
-      startMarker.setAttribute("r", "3.5");
-      startMarker.setAttribute("fill", "#ffffff");
-      startMarker.setAttribute("stroke", strokeColor);
-      startMarker.setAttribute("stroke-width", "1.5");
-      svg.appendChild(startMarker);
-
-      const endMarker = document.createElementNS(svg.namespaceURI, "circle");
-      endMarker.setAttribute("cx", String(x2));
-      endMarker.setAttribute("cy", String(cy));
-      endMarker.setAttribute("r", "3.5");
-      endMarker.setAttribute("fill", "#ffffff");
-      endMarker.setAttribute("stroke", strokeColor);
-      endMarker.setAttribute("stroke-width", "1.5");
-      svg.appendChild(endMarker);
+    if (editable) {
+      const hint = container.createDiv({ cls: "prop-charts-empty" });
+      hint.textContent =
+        "Clique em uma barra ou no nome para ajustar datas e estimate da tarefa.";
     }
-
-    // label da task na coluna esquerda
-    const labelCenterY = yTop + barH / 2 + 2;
-    const labelX = groupField ? 16 : 4;
-
-    if (labelModeNow === "wide") {
-      // expandido: nome completo, multilinha, com tooltip e MESMO click da barra
-      drawMultilineLabel(
-        fullName,
-        labelX,
-        labelCenterY,
-        labelColWidth - labelX - 4,
-        11,
-        null,
-        handleEnter,
-        handleLeave,
-        handleClickTask
-      );
-    } else {
-      // compacto: 1 linha só, truncada pra caber, com tooltip + click = barra
-      let compact = fullName;
-      const usableWidth = Math.max(40, labelColWidth - labelX - 8);
-      const approxCharWidth = 6;
-      const maxChars = Math.max(8, Math.floor(usableWidth / approxCharWidth));
-      if (compact.length > maxChars) {
-        compact = compact.slice(0, maxChars - 1) + "…";
-      }
-
-      const labelNode = document.createElementNS(svg.namespaceURI, "text");
-      labelNode.setAttribute("x", String(labelX));
-      labelNode.setAttribute("y", String(labelCenterY));
-      labelNode.setAttribute("text-anchor", "start");
-      labelNode.setAttribute("font-size", "11");
-      labelNode.setAttribute("fill", "#111111");
-      labelNode.textContent = compact;
-      (labelNode as any).style.cursor = "pointer";
-
-      labelNode.addEventListener("mouseenter", handleEnter);
-      labelNode.addEventListener("mouseleave", handleLeave);
-      labelNode.addEventListener("click", handleClickTask);
-
-      svg.appendChild(labelNode);
-    }
-
-    // linha de due, se houver
-    if (due instanceof Date) {
-      const xd = xScale(due.getTime());
-      const dueLine = document.createElementNS(svg.namespaceURI, "line");
-      dueLine.setAttribute("x1", String(xd));
-      dueLine.setAttribute("y1", String(yTop));
-      dueLine.setAttribute("x2", String(xd));
-      dueLine.setAttribute("y2", String(yTop + barH));
-      dueLine.setAttribute("stroke", "#ff6b6b");
-      dueLine.setAttribute("stroke-width", "2");
-      dueLine.setAttribute("stroke-dasharray", "4,2");
-      svg.appendChild(dueLine);
-    }
-
-    rowIndex += 1;
   }
-
-  if (editable) {
-    const hint = container.createDiv({ cls: "prop-charts-empty" });
-    hint.textContent =
-      "Clique em uma barra ou no nome para ajustar datas e estimate da tarefa.";
-  }
-}
-
-
 }
 
 // ---------------------------------------------------------------------------
 // Modal para editar start / end / estimate a partir do Gantt
 // ---------------------------------------------------------------------------
-
-
 class GanttEditModal extends Modal {
   private notePath: string;
   private spec: ChartSpec;
   private refresh?: () => void;
-  private reindexFile?: (path: string) => void;
+  private reindexFile?: (path: string) => void | Promise<void>;
 
   private startKey?: string;
   private endKey?: string;
@@ -1897,9 +1851,8 @@ class GanttEditModal extends Modal {
     notePath: string,
     spec: ChartSpec,
     refresh?: () => void,
-    reindexFile?: (path: string) => void
+    reindexFile?: (path: string) => void | Promise<void>
   ) {
-    // @ts-ignore
     super(app);
     this.notePath = notePath;
     this.spec = spec;
@@ -1927,7 +1880,6 @@ class GanttEditModal extends Modal {
 
     const raw = await this.app.vault.read(file);
 
-    // frontmatter
     let front: any = {};
     let body = raw;
     const fmMatch = /^---\n([\s\S]*?)\n---\n?/m.exec(raw);
@@ -1941,7 +1893,6 @@ class GanttEditModal extends Modal {
     }
     if (typeof front !== "object" || front == null) front = {};
 
-    // header com nome clicável
     const title =
       this.notePath.replace(/\.md$/i, "").split("/").pop() ?? this.notePath;
     const header = contentEl.createDiv({ cls: "gantt-edit-header" });
@@ -1950,7 +1901,7 @@ class GanttEditModal extends Modal {
       cls: "gantt-edit-title",
     });
     titleEl.href = "#";
-    titleEl.addEventListener("click", (ev) => {
+    titleEl.addEventListener("click", (ev: MouseEvent) => {
       ev.preventDefault();
       this.app.workspace.openLinkText(this.notePath, this.notePath, true);
     });
@@ -1983,7 +1934,6 @@ class GanttEditModal extends Modal {
       return s;
     };
 
-    // Start
     let startInput: HTMLInputElement | null = null;
     if (this.startKey) {
       const { field } = makeRow(this.startKey + " (início)");
@@ -1991,7 +1941,6 @@ class GanttEditModal extends Modal {
       startInput.value = toDateInput(front[this.startKey]);
     }
 
-    // End
     let endInput: HTMLInputElement | null = null;
     if (this.endKey) {
       const { field } = makeRow(this.endKey + " (fim)");
@@ -1999,7 +1948,6 @@ class GanttEditModal extends Modal {
       endInput.value = toDateInput(front[this.endKey]);
     }
 
-    // Estimate / duração
     let durInput: HTMLInputElement | null = null;
     if (this.durationKey) {
       const { field } = makeRow(this.durationKey + " (minutos)");
@@ -2010,7 +1958,6 @@ class GanttEditModal extends Modal {
       durInput.step = "5";
     }
 
-    // Due
     let dueInput: HTMLInputElement | null = null;
     if (this.dueKey) {
       const { field } = makeRow(this.dueKey + " (due)");
@@ -2018,7 +1965,6 @@ class GanttEditModal extends Modal {
       dueInput.value = toDateInput(front[this.dueKey]);
     }
 
-    // botões
     const buttons = contentEl.createDiv({ cls: "gantt-edit-buttons" });
     const saveBtn = buttons.createEl("button", {
       text: "Salvar",
@@ -2026,12 +1972,12 @@ class GanttEditModal extends Modal {
     });
     const cancelBtn = buttons.createEl("button", { text: "Cancelar" });
 
-    cancelBtn.addEventListener("click", (ev) => {
+    cancelBtn.addEventListener("click", (ev: MouseEvent) => {
       ev.preventDefault();
       this.close();
     });
 
-    saveBtn.addEventListener("click", async (ev) => {
+    saveBtn.addEventListener("click", async (ev: MouseEvent) => {
       ev.preventDefault();
 
       if (this.startKey && startInput) {
@@ -2047,11 +1993,11 @@ class GanttEditModal extends Modal {
       }
 
       if (this.durationKey && durInput) {
-        const raw = durInput.value.trim();
-        if (raw === "") {
+        const rawVal = durInput.value.trim();
+        if (rawVal === "") {
           delete front[this.durationKey];
         } else {
-          const n = Number(raw);
+          const n = Number(rawVal);
           if (!Number.isNaN(n)) front[this.durationKey] = n;
         }
       }
@@ -2068,14 +2014,18 @@ class GanttEditModal extends Modal {
 
       if (this.reindexFile) {
         try {
-          this.reindexFile(this.notePath);
-        } catch {}
+          await this.reindexFile(this.notePath);
+        } catch {
+          // ignore
+        }
       }
 
       if (this.refresh) {
         try {
           this.refresh();
-        } catch {}
+        } catch {
+          // ignore
+        }
       }
 
       new Notice("Task atualizada");
@@ -2088,15 +2038,12 @@ class GanttEditModal extends Modal {
   }
 }
 
-
-
 class ChartNotesZoomModal extends Modal {
   private spec: ChartSpec;
   private data: QueryResult;
   private renderer: PropChartsRenderer;
   private ctx?: RenderContext;
 
-  // S / M / L
   private size: "small" | "medium" | "large" = "large";
 
   constructor(
@@ -2105,7 +2052,6 @@ class ChartNotesZoomModal extends Modal {
     renderer: PropChartsRenderer,
     ctx?: RenderContext
   ) {
-    // @ts-ignore
     super(app);
     this.spec = spec;
     this.data = data;
@@ -2117,12 +2063,10 @@ class ChartNotesZoomModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
 
-    // deixa a modal grande
     this.modalEl.addClass("chart-notes-zoom-modal-shell");
     contentEl.addClass("chart-notes-zoom-modal");
     this.applySize();
 
-    // header: título + controles de tamanho
     const header = contentEl.createDiv({ cls: "chart-notes-zoom-header" });
 
     const title =
@@ -2138,7 +2082,10 @@ class ChartNotesZoomModal extends Modal {
     const sizeControls = header.createDiv({
       cls: "chart-notes-zoom-sizes",
     });
-    const makeSizeButton = (label: string, size: "small" | "medium" | "large") => {
+    const makeSizeButton = (
+      label: string,
+      size: "small" | "medium" | "large"
+    ) => {
       const btn = sizeControls.createEl("button", {
         cls: "chart-notes-zoom-size-btn",
         text: label,
@@ -2147,15 +2094,14 @@ class ChartNotesZoomModal extends Modal {
         btn.toggleClass("is-active", this.size === size);
       };
       refreshActive();
-      btn.addEventListener("click", (ev) => {
+      btn.addEventListener("click", (ev: MouseEvent) => {
         ev.preventDefault();
         this.size = size;
         this.applySize();
-        // reajusta active style
         const siblings = sizeControls.querySelectorAll(
           ".chart-notes-zoom-size-btn"
         );
-        siblings.forEach((el) =>
+        siblings.forEach((el: Element) =>
           el.classList.remove("is-active")
         );
         btn.classList.add("is-active");
@@ -2166,10 +2112,8 @@ class ChartNotesZoomModal extends Modal {
     makeSizeButton("M", "medium");
     makeSizeButton("L", "large");
 
-    // corpo onde o gráfico é renderizado em modo "zoom"
     const body = contentEl.createDiv({ cls: "chart-notes-zoom-body" });
 
-    // reusa o mesmo renderer, mas indica que é zoom (pra não criar botão ⤢ de novo)
     this.renderer.render(body, this.spec, this.data, this.ctx, true);
   }
 
