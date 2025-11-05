@@ -3,39 +3,45 @@ name: Release Obsidian plugin
 on:
   push:
     tags:
-      - "v*"     # ex: v0.2.1
-      - "[0-9]*" # ex: 0.2.1
+      - '*'          # dispara sempre que um tag novo for enviado pro GitHub
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # precisa disso pra criar Release e anexar arquivos
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: 20
 
-      - name: Install dependencies
+      - name: Install deps
         run: npm ci
 
       - name: Build plugin
         run: npm run build
 
-      - name: List build files (debug)
-        run: ls -la
+      - name: Empacotar plugin
+        run: |
+          mkdir -p dist
+          cp main.js manifest.json styles.css dist/
+          cd dist
+          zip ../chartnotes-${GITHUB_REF_NAME}.zip ./*
+        shell: bash
 
-      - name: Create GitHub release with plugin files
+      - name: Criar GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            manifest.json
-            main.js
-            styles.css
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: chartnotes-${{ github.ref_name }}.zip
 
