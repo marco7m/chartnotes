@@ -1,0 +1,303 @@
+/* Container geral do bloco --------------------------------*/
+.prop-charts-container {
+  max-width: 100%;
+  display: block;
+  margin: 8px 0;
+  position: relative;
+  font-size: 12px;
+}
+
+/* área de scroll horizontal do SVG ------------------------*/
+.chart-notes-scroll {
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+}
+
+/* wrapper interno do SVG (onde aplicamos background) ------*/
+.chart-notes-inner {
+  display: block;
+  min-height: 300px;
+  border-radius: 8px;
+  position: relative; /* <- adiciona isso */
+}
+
+/* header (título acima do gráfico) ------------------------*/
+.prop-charts-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* título + controles alinhados à esquerda */
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+/* título em si */
+.prop-charts-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin: 0;
+}
+
+/* estado “sem dados” --------------------------------------*/
+.prop-charts-empty {
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 4px 0;
+}
+
+/* Tooltip ------------------------------------------------- */
+.chart-notes-tooltip {
+  position: absolute;
+  background: var(--background-primary-alt, rgba(0,0,0,0.9));
+  color: var(--text-on-primary, #fff);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.25;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  backdrop-filter: blur(4px);
+  min-width: 120px;
+  max-width: 260px;
+}
+.chart-notes-tooltip-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.chart-notes-tooltip-value {
+  font-size: 12px;
+}
+.chart-notes-tooltip-notes {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+/* Painel de detalhes (lista de notas ao clicar) ----------- */
+.chart-notes-details {
+  margin-top: 8px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 6px 8px 4px 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.chart-notes-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.chart-notes-details-title {
+  font-weight: 600;
+  font-size: 12px;
+}
+.chart-notes-details-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.chart-notes-details-close:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-normal);
+}
+.chart-notes-details-list {
+  margin: 4px 0 2px 16px;
+  padding: 0;
+  font-size: 12px;
+}
+.chart-notes-details-item {
+  margin-bottom: 2px;
+}
+.chart-notes-details-link {
+  color: var(--text-accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+.chart-notes-details-link:hover {
+  text-decoration: underline;
+}
+
+/* Tabela (type: table) ------------------------------------ */
+.chart-notes-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.chart-notes-table th,
+.chart-notes-table td {
+  border: 1px solid var(--background-modifier-border);
+  padding: 4px 6px;
+}
+.chart-notes-table thead th {
+  background: var(--background-secondary);
+  font-weight: 600;
+}
+
+/* Legenda (scatter, stacked-bar, pie quando tiver) -------- */
+.chart-notes-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+.chart-notes-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chart-notes-legend-item > div {
+  flex-shrink: 0;
+}
+
+/* Scrollbar horizontal ------------------------------------ */
+.chart-notes-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.chart-notes-scroll::-webkit-scrollbar-thumb {
+  background: var(--background-modifier-border);
+  border-radius: 999px;
+}
+.chart-notes-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* SVG tweaks: usar cores bem escuras para texto/linhas ---- */
+.prop-charts-container svg {
+  color: #111111;
+}
+.prop-charts-container svg text {
+  fill: #111111;
+}
+
+/* Botão de zoom (⤢) overlay antigo – AGORA ESCONDIDO ------*/
+/* continua existindo no DOM, mas invisível; usamos o click via JS */
+.chart-notes-zoom-button {
+  display: none !important;
+}
+
+/* Modal de zoom -------------------------------------------*/
+/* shell da modal – tamanho é ajustado via JS (applySize) */
+.chart-notes-zoom-modal-shell {
+  /* estilos gerais da shell podem ser adicionados aqui se precisar */
+}
+
+/* conteúdo interno: layout em coluna (header + body) */
+.chart-notes-zoom-modal {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* header do zoom (título + botões S/M/L) */
+.chart-notes-zoom-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.chart-notes-zoom-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+/* controles de tamanho S/M/L ------------------------------*/
+.chart-notes-zoom-sizes {
+  display: flex;
+  gap: 4px;
+}
+
+.chart-notes-zoom-size-btn {
+  border: none;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.chart-notes-zoom-size-btn.is-active {
+  background: var(--text-accent);
+  color: var(--text-on-accent, #ffffff);
+}
+.chart-notes-zoom-size-btn:hover:not(.is-active) {
+  background: var(--background-modifier-hover);
+}
+
+/* corpo do gráfico dentro da modal – ocupa o resto --------*/
+.chart-notes-zoom-body {
+  flex: 1 1 auto;
+  max-height: 100%;
+}
+
+/* garante que o gráfico dentro do modal aproveite bem o espaço horizontal */
+.chart-notes-zoom-body .chart-notes-scroll {
+  max-width: 100%;
+}
+
+/* Controles de zoom do Gantt (linha do título) ------------*/
+.gantt-zoom-controls {
+  display: flex;
+  gap: 4px;
+  font-size: 11px;
+}
+
+/* botões Fit / 100% / 150% / 200% e fullscreen do Gantt ---*/
+.gantt-zoom-btn {
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.gantt-zoom-btn.is-active {
+  background: var(--text-accent);
+  color: var(--text-on-accent, #ffffff);
+  border-color: var(--text-accent);
+}
+.gantt-zoom-btn:hover:not(.is-active) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* diferenciar visualmente o botão de fullscreen interno ----*/
+.gantt-fullscreen-btn {
+  font-size: 12px;
+  padding-inline: 6px;
+}
+
+.gantt-label-floating-btn {
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 4;
+
+  width: 18px;
+  height: 18px;
+  padding: 0;
+
+  border-radius: 999px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-muted);
+
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.20);
+  cursor: pointer;
+}
+
+.gantt-label-floating-btn:hover {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
