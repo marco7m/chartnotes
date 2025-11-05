@@ -1,0 +1,41 @@
+name: Release Obsidian plugin
+
+on:
+  push:
+    tags:
+      - "v*"     # ex: v0.2.1
+      - "[0-9]*" # ex: 0.2.1
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build plugin
+        run: npm run build
+
+      - name: List build files (debug)
+        run: ls -la
+
+      - name: Create GitHub release with plugin files
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            manifest.json
+            main.js
+            styles.css
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
