@@ -1,4 +1,3 @@
-````markdown
 # Chart Notes
 
 Visualize your Obsidian notes as charts — using only YAML.
@@ -753,5 +752,4 @@ Suggestions and ideas are very welcome 🙂
 ```
 
 ::contentReference[oaicite:0]{index=0}
-```
 
