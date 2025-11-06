@@ -23,7 +23,7 @@ Chart Notes reads properties from your notes (YAML frontmatter / properties) and
 2. In BRAT settings, choose **Add beta plugin**.
 3. Use this repo:
 
-   ```text
+```text
    marco7m/chartnotes
 ````
 
