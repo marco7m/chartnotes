@@ -749,7 +749,5 @@ options:
 
 Suggestions and ideas are very welcome 🙂
 
-```
 
-::contentReference[oaicite:0]{index=0}
 
