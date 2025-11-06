@@ -1,21 +1,9 @@
 // src/bases-view.ts
-import {
-	BasesView,
-	type QueryController,
-	parsePropertyId,
-} from "obsidian";
-
+import { BasesView } from "obsidian";
+import { PropChartsRenderer } from "./renderer";
 import type { ChartSpec, QueryResult, QueryResultRow } from "./types";
-import { PropChartsRenderer, type RenderContext } from "./renderer";
 
 export const CHARTNOTES_BASES_VIEW_TYPE = "chartnotes-view";
-
-type SelectedProp = {
-	/** ID completo da propriedade no Bases, ex: "prop.status" ou "file.name". */
-	id: string | null;
-	/** Nome curto (sem prefixo), ex: "status" ou "name". */
-	name: string | null;
-};
 
 export class ChartNotesBasesView extends BasesView {
 	readonly type = CHARTNOTES_BASES_VIEW_TYPE;
@@ -23,344 +11,361 @@ export class ChartNotesBasesView extends BasesView {
 	private containerEl: HTMLElement;
 	private renderer: PropChartsRenderer;
 
-	constructor(controller: QueryController, parentEl: HTMLElement) {
-		super(controller);
-		this.containerEl = parentEl.createDiv("chartnotes-bases-view");
+	constructor(controller: any, parentEl: HTMLElement) {
+		super(controller as any);
+		this.containerEl = parentEl.createDiv({
+			cls: "chart-notes-bases-view",
+		});
 		this.renderer = new PropChartsRenderer();
 	}
 
 	public onDataUpdated(): void {
-		this.containerEl.empty();
+		const container = this.containerEl;
+		container.empty();
 
-		const grouped = (this as any).data?.groupedData as any[] | undefined;
-		if (!grouped || grouped.length === 0) {
-			this.containerEl.createDiv({
+		const dataAny: any = this.data;
+		const groups: any[] = dataAny?.groupedData ?? [];
+
+		if (!groups.length) {
+			container.createDiv({
 				cls: "prop-charts-empty",
-				text: "Sem dados (Base vazia ou sem resultados).",
+				text:
+					"Chart Notes (Bases): nenhum arquivo corresponde ao filtro atual.",
 			});
 			return;
 		}
 
-		const chartTypeRaw = (this as any).config?.get("chartType") as
-			| string
-			| undefined;
-		const chartType = (chartTypeRaw || "bar").trim().toLowerCase();
+		// Lê as opções configuradas na view
+		const chartTypeRaw =
+			(this.config.get("chartType") as string | undefined) ?? "bar";
+		const chartType = (chartTypeRaw || "bar").trim() || "bar";
 
-		let rows: QueryResultRow[];
+		const xPropId =
+			(this.config.get("xProperty") as string | undefined)?.trim() ?? "";
+		const yPropId =
+			(this.config.get("yProperty") as string | undefined)?.trim() ?? "";
+		const seriesPropId =
+			(this.config.get("seriesProperty") as string | undefined)?.trim() ??
+			"";
+
+		const startPropId =
+			(this.config.get("startProperty") as string | undefined)?.trim() ??
+			"";
+		const endPropId =
+			(this.config.get("endProperty") as string | undefined)?.trim() ??
+			"";
+		const duePropId =
+			(this.config.get("dueProperty") as string | undefined)?.trim() ??
+			"";
+		const durationPropId =
+			(this.config.get("durationProperty") as string | undefined)?.trim() ??
+			"";
+		const groupPropId =
+			(this.config.get("groupProperty") as string | undefined)?.trim() ??
+			"";
+
+		// Achata todos os grupos em uma lista de entries
+		const entries: any[] = [];
+		for (const group of groups) {
+			for (const entry of group.entries as any[]) {
+				entries.push(entry);
+			}
+		}
+
+		let rows: QueryResultRow[] = [];
+
 		if (chartType === "gantt") {
-			rows = this.buildRowsForGantt(grouped);
+			rows = this.buildGanttRows(
+				entries,
+				startPropId,
+				endPropId,
+				duePropId,
+				durationPropId,
+				groupPropId
+			);
 		} else if (chartType === "scatter") {
-			rows = this.buildRowsForScatter(grouped);
+			rows = this.buildScatterRows(
+				entries,
+				xPropId,
+				yPropId,
+				seriesPropId
+			);
 		} else {
-			rows = this.buildRowsForAggregatedCharts(grouped);
+			// bar, line, area, pie, stacked-bar
+			rows = this.buildStandardRows(
+				entries,
+				xPropId,
+				yPropId,
+				seriesPropId
+			);
 		}
 
 		if (!rows.length) {
-			this.containerEl.createDiv({
+			container.createDiv({
 				cls: "prop-charts-empty",
-				text: "Sem linhas para exibir (verifique as propriedades configuradas).",
+				text:
+					"Chart Notes: não há dados para esse tipo de gráfico / propriedades escolhidas.",
 			});
 			return;
+		}
+
+		const spec: ChartSpec = {
+			type: chartType as any,
+			source: {},
+			encoding: {},
+			options: {
+				title: this.config.name || "Chart Notes (Bases)",
+				// se no futuro o Gantt respeitar options.editable,
+				// aqui já deixamos false pra view do Bases
+				...(chartType === "gantt" ? { editable: false } : {}),
+			} as any,
+			aggregate: {},
+		};
+
+		// só pra documentar intenção; o renderer praticamente não usa aggregate
+		if (!yPropId && chartType !== "gantt" && chartType !== "scatter") {
+			(spec.aggregate as any).y = "count";
+		}
+
+		if (chartType === "gantt") {
+			spec.encoding = {
+				start: this.stripPrefix(startPropId),
+				end: this.stripPrefix(endPropId),
+				due: this.stripPrefix(duePropId),
+				duration: this.stripPrefix(durationPropId),
+				group: this.stripPrefix(groupPropId),
+				label: this.stripPrefix(xPropId),
+				series: this.stripPrefix(groupPropId),
+			} as any;
 		}
 
 		const result: QueryResult = { rows };
 
-		const encoding = this.buildEncoding();
-
-		const spec: ChartSpec = {
-			// ChartSpec.type é o mesmo usado no renderer.ts
-			type: chartType as any,
-			// `source` não é usado pelo renderer, então algo neutro aqui.
-			source: {
-				type: "properties",
-				query: "",
-			} as any,
-			encoding: encoding as any,
-			options: {
-				title: (this as any).config?.name ?? "Chart Notes (Bases)",
-			},
-		};
-
-		const ctx: RenderContext = {
-			// Se o Gantt editar datas, dá pra forçar re-render local
-			refresh: () => this.onDataUpdated(),
-		};
-
-		this.renderer.render(this.containerEl, spec, result, ctx);
+		this.renderer.render(container, spec, result);
 	}
 
-	// -------------------------------------------------------------------------
-	// Helpers de propriedades / valores
-	// -------------------------------------------------------------------------
+	// -----------------------------------------------------------------------
+	// Helpers
+	// -----------------------------------------------------------------------
 
+	private stripPrefix(id: string): string | undefined {
+		if (!id) return undefined;
+		const dot = id.indexOf(".");
+		return dot >= 0 ? id.slice(dot + 1) : id;
+	}
 
-	private getSelectedProp(configKey: string): SelectedProp {
-		const cfg = (this as any).config;
+	private buildStandardRows(
+		entries: any[],
+		xPropId: string,
+		yPropId: string,
+		seriesPropId: string
+	): QueryResultRow[] {
+		const agg = new Map<
+			string,
+			{
+				x: unknown;
+				series?: string;
+				sumY: number;
+				count: number;
+				notes: string[];
+			}
+		>();
 
-		// valor cru vindo da config
-		const rawId = cfg?.get(configKey);
-		if (!rawId || typeof rawId !== "string") {
-			return { id: null, name: null };
+		for (const entry of entries) {
+			const file = (entry as any).file;
+			const fileName: string = file?.name ?? "";
+			const filePath: string = file?.path ?? "";
+
+			// X: propriedade configurada ou nome da nota
+			let xVal: unknown;
+			if (xPropId) {
+				const v: any = entry.getValue(xPropId);
+				const s = v?.toString?.();
+				if (!s) continue;
+				xVal = s;
+			} else {
+				xVal = fileName;
+			}
+
+			// Série opcional
+			let series: string | undefined;
+			if (seriesPropId) {
+				const v: any = entry.getValue(seriesPropId);
+				const s = v?.toString?.();
+				if (s) series = s;
+			}
+
+			// Y:
+			// - se yProperty vazio => 1 (count)
+			// - se yProperty setado => soma dos valores numéricos
+			let yNumber = 1;
+			if (yPropId) {
+				const v: any = entry.getValue(yPropId);
+				const raw = v?.value ?? v?.toString?.();
+				const n = Number(raw);
+				if (!Number.isFinite(n)) continue;
+				yNumber = n;
+			}
+
+			const key = `${String(xVal)}||${series ?? ""}`;
+			let bucket = agg.get(key);
+			if (!bucket) {
+				bucket = {
+					x: xVal,
+					series,
+					sumY: 0,
+					count: 0,
+					notes: [],
+				};
+				agg.set(key, bucket);
+			}
+			bucket.sumY += yNumber;
+			bucket.count += 1;
+			if (filePath) bucket.notes.push(filePath);
 		}
 
-		// parsePropertyId espera um union tipo `note.xxx` / `file.xxx` / `formula.xxx`
-		const parsedId =
-			rawId as `note.${string}` | `formula.${string}` | `file.${string}`;
+		const rows: QueryResultRow[] = [];
+		for (const bucket of agg.values()) {
+			const y = yPropId ? bucket.sumY : bucket.count;
+			rows.push({
+				x: bucket.x,
+				y,
+				series: bucket.series,
+				notes: bucket.notes,
+			});
+		}
 
-		try {
-			const parsed = parsePropertyId(parsedId);
-			return {
-				id: rawId, // aqui a gente guarda como string normal
-				name: parsed?.name ?? rawId,
+		// ordena por X (string)
+		rows.sort((a, b) => String(a.x).localeCompare(String(b.x)));
+		return rows;
+	}
+
+	private buildScatterRows(
+		entries: any[],
+		xPropId: string,
+		yPropId: string,
+		seriesPropId: string
+	): QueryResultRow[] {
+		if (!xPropId || !yPropId) return [];
+
+		const rows: QueryResultRow[] = [];
+
+		for (const entry of entries) {
+			const file = (entry as any).file;
+			const filePath: string = file?.path ?? "";
+
+			const vx: any = entry.getValue(xPropId);
+			const vy: any = entry.getValue(yPropId);
+
+			const sx = vx?.toString?.();
+			const syRaw = vy?.value ?? vy?.toString?.();
+			const yNum = Number(syRaw);
+
+			if (!sx || !Number.isFinite(yNum)) continue;
+
+			let series: string | undefined;
+			if (seriesPropId) {
+				const vs: any = entry.getValue(seriesPropId);
+				const ss = vs?.toString?.();
+				if (ss) series = ss;
+			}
+
+			rows.push({
+				x: sx,
+				y: yNum,
+				series,
+				notes: filePath ? [filePath] : [],
+			});
+		}
+
+		return rows;
+	}
+
+	private buildGanttRows(
+		entries: any[],
+		startPropId: string,
+		endPropId: string,
+		duePropId: string,
+		durationPropId: string,
+		groupPropId: string
+	): QueryResultRow[] {
+		if (!startPropId && !endPropId) return [];
+
+		const rows: QueryResultRow[] = [];
+
+		for (const entry of entries) {
+			const file = (entry as any).file;
+			const fileName: string = file?.name ?? "";
+			const filePath: string = file?.path ?? "";
+
+			const vStart: any = startPropId ? entry.getValue(startPropId) : null;
+			const vEnd: any = endPropId ? entry.getValue(endPropId) : null;
+			const vDue: any = duePropId ? entry.getValue(duePropId) : null;
+
+			const startDate = this.toDate(vStart);
+			const endDate = this.toDate(vEnd) ?? startDate;
+			const dueDate = this.toDate(vDue);
+
+			if (!startDate || !endDate) continue;
+
+			let group: string | undefined;
+			if (groupPropId) {
+				const vg: any = entry.getValue(groupPropId);
+				const sg = vg?.toString?.();
+				if (sg) group = sg;
+			}
+
+			// duração opcional; o Gantt calcula fallback usando o intervalo
+			let durationMinutes: number | undefined;
+			if (durationPropId) {
+				const vd: any = entry.getValue(durationPropId);
+				const raw = vd?.value ?? vd?.toString?.();
+				const n = Number(raw);
+				if (Number.isFinite(n)) durationMinutes = n;
+			}
+
+			const row: QueryResultRow = {
+				x: fileName,
+				y: 1,
+				start: startDate,
+				end: endDate,
+				series: group,
+				notes: filePath ? [filePath] : [],
 			};
-		} catch {
-			// se der erro no parse (ex.: valor estranho), ainda assim devolve algo
-			return {
-				id: rawId,
-				name: rawId,
-			};
+
+			// props usados pelo renderer do Gantt (tooltip / estimate)
+			const props: Record<string, unknown> = {};
+			if (durationMinutes != null && durationPropId) {
+				const key = this.stripPrefix(durationPropId) ?? "duration";
+				props[key] = durationMinutes;
+			}
+			if (Object.keys(props).length) {
+				(row as any).props = props;
+			}
+			if (dueDate) {
+				(row as any).due = dueDate;
+			}
+
+			rows.push(row);
 		}
+
+		// ordena por início
+		rows.sort((a, b) => {
+			const ta = (a.start as Date).getTime();
+			const tb = (b.start as Date).getTime();
+			return ta - tb;
+		});
+
+		return rows;
 	}
 
-
-	/**
-	 * Lê um valor da entry e devolve uma string simples (ou null se vazio).
-	 */
-	private readValue(entry: any, prop: SelectedProp): string | null {
-		if (!prop.id) return null;
-		let value: any;
-		try {
-			value = entry.getValue(prop.id);
-		} catch {
-			return null;
-		}
-		if (!value) return null;
-		try {
-			if (typeof value.isEmpty === "function" && value.isEmpty()) return null;
-		} catch {
-			// ignore
-		}
-		try {
-			const s = value.toString();
-			if (s == null) return null;
-			const trimmed = String(s).trim();
-			return trimmed.length ? trimmed : null;
-		} catch {
-			return null;
-		}
-	}
-
-	private parseDate(raw: string | null): Date | null {
-		if (!raw) return null;
-		const s = raw.trim();
+	private toDate(v: any): Date | null {
+		if (!v) return null;
+		const s = v.toString?.();
 		if (!s) return null;
 		const d = new Date(s);
-		if (!Number.isNaN(d.getTime())) return d;
-		return null;
-	}
-
-	// -------------------------------------------------------------------------
-	// Builders de linhas para cada tipo de gráfico
-	// -------------------------------------------------------------------------
-
-	/**
-	 * Para bar / line / area / pie / stacked-bar: agrega por (x, series).
-	 * Se não houver yProperty configurado, faz um "count" de linhas.
-	 */
-	private buildRowsForAggregatedCharts(groups: any[]): QueryResultRow[] {
-		const xProp = this.getSelectedProp("xProperty");
-		const yProp = this.getSelectedProp("yProperty");
-		const seriesProp = this.getSelectedProp("seriesProperty");
-
-		const byKey = new Map<string, QueryResultRow>();
-
-		for (const group of groups) {
-			for (const entry of group.entries as any[]) {
-				const file = entry.file;
-				const xStr =
-					this.readValue(entry, xProp) ??
-						(file?.name ? String(file.name) : String(file?.path ?? ""));
-				const yStr = this.readValue(entry, yProp);
-
-				let yNum = 1;
-				if (yProp.id) {
-					if (yStr == null) continue;
-					const n = Number(yStr);
-					if (Number.isNaN(n)) continue;
-					yNum = n;
-				}
-
-				const seriesStr = this.readValue(entry, seriesProp);
-				const series = seriesStr != null ? String(seriesStr) : undefined;
-
-				const key = `${xStr}@@${series ?? ""}`;
-
-				let row = byKey.get(key);
-				if (!row) {
-					row = {
-						x: xStr,
-						y: 0,
-						series,
-						notes: [],
-						props: {},
-					};
-					byKey.set(key, row);
-				}
-
-				row.y += yNum;
-				if (file?.path) {
-					row.notes!.push(file.path);
-				}
-
-				if (row.props && xProp.name) row.props[xProp.name] = xStr;
-				if (row.props && yProp.name && yStr != null) {
-					row.props[yProp.name] = yNum;
-				}
-				if (row.props && seriesProp.name && seriesStr != null) {
-					row.props[seriesProp.name] = seriesStr;
-				}
-			}
-		}
-
-		return Array.from(byKey.values());
-	}
-
-	/**
-	 * Para scatter: uma linha por entry, X e Y numéricos.
-	 */
-	private buildRowsForScatter(groups: any[]): QueryResultRow[] {
-		const xProp = this.getSelectedProp("xProperty");
-		const yProp = this.getSelectedProp("yProperty");
-		const seriesProp = this.getSelectedProp("seriesProperty");
-
-		const rows: QueryResultRow[] = [];
-
-		for (const group of groups) {
-			for (const entry of group.entries as any[]) {
-				const file = entry.file;
-
-				const xStr = this.readValue(entry, xProp);
-				const yStr = this.readValue(entry, yProp);
-				if (xStr == null || yStr == null) continue;
-
-				const xNum = Number(xStr);
-				const yNum = Number(yStr);
-				if (Number.isNaN(xNum) || Number.isNaN(yNum)) continue;
-
-				const seriesStr = this.readValue(entry, seriesProp);
-				const series = seriesStr != null ? String(seriesStr) : undefined;
-
-				const row: QueryResultRow = {
-					x: xNum,
-					y: yNum,
-					series,
-					notes: file?.path ? [file.path] : [],
-					props: {},
-				};
-
-				rows.push(row);
-			}
-		}
-
-		return rows;
-	}
-
-	/**
-	 * Para Gantt: uma linha por tarefa com start/end/due etc.
-	 */
-	private buildRowsForGantt(groups: any[]): QueryResultRow[] {
-		const xProp = this.getSelectedProp("xProperty");
-		const seriesProp = this.getSelectedProp("seriesProperty");
-		const startProp = this.getSelectedProp("startProperty");
-		const endProp = this.getSelectedProp("endProperty");
-		const dueProp = this.getSelectedProp("dueProperty");
-		const durationProp = this.getSelectedProp("durationProperty");
-		const groupProp = this.getSelectedProp("groupProperty");
-
-		const rows: QueryResultRow[] = [];
-
-		for (const group of groups) {
-			for (const entry of group.entries as any[]) {
-				const file = entry.file;
-
-				const startStr = this.readValue(entry, startProp);
-				const endStr = this.readValue(entry, endProp);
-				if (!startStr || !endStr) continue;
-
-				const start = this.parseDate(startStr);
-				const end = this.parseDate(endStr);
-				if (!start || !end) continue;
-
-				const label =
-					this.readValue(entry, xProp) ??
-						(file?.name
-							? String(file.name).replace(/\.md$/i, "")
-							: String(file?.path ?? ""));
-
-				const dueStr = this.readValue(entry, dueProp);
-				const due = this.parseDate(dueStr ?? null);
-
-				const durationStr = this.readValue(entry, durationProp);
-				const durationMinutes =
-					durationStr != null ? Number(durationStr) : undefined;
-				const hasDuration =
-					typeof durationMinutes === "number" &&
-						!Number.isNaN(durationMinutes);
-
-				const seriesStr = this.readValue(entry, seriesProp);
-				const series = seriesStr != null ? String(seriesStr) : undefined;
-
-				const groupVal = this.readValue(entry, groupProp);
-
-				const props: Record<string, any> = {};
-				if (durationProp.name && hasDuration) {
-					props[durationProp.name] = durationMinutes;
-				}
-				if (groupProp.name && groupVal != null) {
-					props[groupProp.name] = groupVal;
-				}
-
-				const row: QueryResultRow = {
-					x: label,
-					y: 0,
-					series,
-					start,
-					end,
-					due: due ?? undefined,
-					notes: file?.path ? [file.path] : [],
-					props,
-				};
-
-				rows.push(row);
-			}
-		}
-
-		return rows;
-	}
-
-	/**
-	 * Monta o objeto encoding usado pelo Gantt (e ignorado pela maioria
-	 * dos outros gráficos, mas não faz mal).
-	 */
-	private buildEncoding(): any {
-		const xProp = this.getSelectedProp("xProperty");
-		const yProp = this.getSelectedProp("yProperty");
-		const seriesProp = this.getSelectedProp("seriesProperty");
-		const startProp = this.getSelectedProp("startProperty");
-		const endProp = this.getSelectedProp("endProperty");
-		const dueProp = this.getSelectedProp("dueProperty");
-		const durationProp = this.getSelectedProp("durationProperty");
-		const groupProp = this.getSelectedProp("groupProperty");
-
-		return {
-			x: xProp.name ?? "x",
-			y: yProp.name ?? "y",
-			series: seriesProp.name ?? "series",
-			start: startProp.name ?? "start",
-			end: endProp.name ?? "end",
-			due: dueProp.name ?? "due",
-			duration: durationProp.name ?? "duration",
-			group: groupProp.name ?? "group",
-		};
+		if (isNaN(d.getTime())) return null;
+		return d;
 	}
 }
+

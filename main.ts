@@ -12,7 +12,6 @@ import {
 	CHARTNOTES_BASES_VIEW_TYPE,
 	ChartNotesBasesView,
 } from "./src/bases-view";
-
 import { PropChartsIndexer } from "./src/indexer";
 import { PropChartsQueryEngine } from "./src/query";
 import { PropChartsRenderer } from "./src/renderer";
@@ -30,17 +29,20 @@ export default class ChartNotesPlugin extends Plugin {
 	async onload() {
 		console.log("loading Chart Notes plugin");
 
-		// indexador
+		// Indexador
 		this.indexer = new PropChartsIndexer(this.app);
 		await this.indexer.buildIndex();
 
-		// engine de query (sem defaultPaths fixos aqui)
-		this.query = new PropChartsQueryEngine(() => this.indexer.getAll(), []);
+		// Engine de query (usa o índice em memória)
+		this.query = new PropChartsQueryEngine(
+			() => this.indexer.getAll(),
+			[]
+		);
 
-		// renderer
+		// Renderer
 		this.renderer = new PropChartsRenderer();
 
-		// manter índice atualizado – agora tipado pra TFile
+		// Manter índice atualizado
 		this.registerEvent(
 			this.app.vault.on("modify", async (file) => {
 				if (file instanceof TFile) {
@@ -63,11 +65,18 @@ export default class ChartNotesPlugin extends Plugin {
 			})
 		);
 
+		// ---------------------------------------------------------------------
 		// ```chart
+		// ---------------------------------------------------------------------
 		this.registerMarkdownCodeBlockProcessor(
 			"chart",
-			async (src: string, el: HTMLElement, _ctx: MarkdownPostProcessorContext) => {
+			async (
+				src: string,
+				el: HTMLElement,
+				_ctx: MarkdownPostProcessorContext
+			) => {
 				let spec: ChartSpec;
+
 				try {
 					const parsed = parseYaml(src);
 					if (!parsed || typeof parsed !== "object") {
@@ -86,17 +95,19 @@ export default class ChartNotesPlugin extends Plugin {
 
 				// type é obrigatório
 				if (!spec.type) {
-					el.createEl("div", { text: "Chart Notes: 'type' obrigatório." });
+					el.createEl("div", {
+						text: "Chart Notes: 'type' obrigatório.",
+					});
 					return;
 				}
 
-				// ── validação encoding por tipo ─────────────────────────────
+				// validação encoding por tipo
 				const isGantt = spec.type === "gantt";
 				const isTable = spec.type === "table";
 				const needsXY = !isGantt && !isTable;
 
 				if (needsXY) {
-					// x sempre obrigatório pra tipos "normais"
+					// x sempre obrigatório pra tipos normais
 					if (!spec.encoding || !spec.encoding.x) {
 						el.createEl("div", {
 							text: "Chart Notes: 'encoding.x' é obrigatório.",
@@ -110,13 +121,13 @@ export default class ChartNotesPlugin extends Plugin {
 					if (!spec.encoding.y && !isCount) {
 						el.createEl("div", {
 							text:
-							"Chart Notes: 'encoding.y' é obrigatório (exceto quando aggregate.y = 'count').",
+								"Chart Notes: 'encoding.y' é obrigatório (exceto quando aggregate.y = 'count').",
 						});
 						return;
 					}
 				}
 
-				// para gantt/table, garantimos pelo menos um objeto vazio
+				// defaults
 				if (!spec.encoding) spec.encoding = {};
 				if (!spec.source) spec.source = {};
 
@@ -134,64 +145,79 @@ export default class ChartNotesPlugin extends Plugin {
 			}
 		);
 
+		// ---------------------------------------------------------------------
+		// Bases view (Chart Notes)
+		// ---------------------------------------------------------------------
 		this.registerBasesView(CHARTNOTES_BASES_VIEW_TYPE, {
 			name: "Chart Notes",
 			icon: "lucide-chart-area",
-			factory: (controller, containerEl) => {
-				return new ChartNotesBasesView(controller, containerEl);
-			},
-			// Configurações que vão aparecer no menu de view do Bases
-			options: () =>
-				[
-					{
-						type: "text",
-						key: "chartType",
-						displayName:
+			factory: (controller, containerEl) =>
+				new ChartNotesBasesView(controller, containerEl),
+
+			// Opções que aparecem no menu da view do Bases
+			// (tudo como 'text' pra evitar tipos esquisitos quebrando a UI)
+			options: () => [
+				{
+					type: "text",
+					key: "chartType",
+					displayName:
 						"Tipo do gráfico (bar, line, area, pie, scatter, gantt, stacked-bar)",
-						default: "bar",
-					},
-					{
-						type: "property",
-						key: "xProperty",
-						displayName: "Propriedade X / label",
-					},
-					{
-						type: "property",
-						key: "yProperty",
-						displayName:
-						"Propriedade Y / valor (vazio = conta linhas)",
-					},
-					{
-						type: "property",
-						key: "seriesProperty",
-						displayName: "Série (opcional, gera legenda)",
-					},
-					{
-						type: "property",
-						key: "startProperty",
-						displayName: "Início (Gantt)",
-					},
-					{
-						type: "property",
-						key: "endProperty",
-						displayName: "Fim (Gantt)",
-					},
-					{
-						type: "property",
-						key: "dueProperty",
-						displayName: "Due date (Gantt, opcional)",
-					},
-					{
-						type: "property",
-						key: "durationProperty",
-						displayName: "Duração em minutos (Gantt, opcional)",
-					},
-					{
-						type: "property",
-						key: "groupProperty",
-						displayName: "Grupo (Gantt / séries, opcional)",
-					},
-				] as any, // cast pra não esquentar com o tipo ViewOption
+					default: "bar",
+				},
+				{
+					type: "text",
+					key: "xProperty",
+					displayName:
+						"Propriedade X / label (ex: file.name, note.status)",
+					default: "file.name",
+				},
+				{
+					type: "text",
+					key: "yProperty",
+					displayName:
+						"Propriedade Y / valor numérico (vazio = conta linhas)",
+					default: "",
+				},
+				{
+					type: "text",
+					key: "seriesProperty",
+					displayName:
+						"Série / legenda (opcional, ex: note.priority)",
+					default: "",
+				},
+				{
+					type: "text",
+					key: "startProperty",
+					displayName: "Início (Gantt, ex: note.startDate)",
+					default: "",
+				},
+				{
+					type: "text",
+					key: "endProperty",
+					displayName: "Fim (Gantt, ex: note.scheduled)",
+					default: "",
+				},
+				{
+					type: "text",
+					key: "dueProperty",
+					displayName: "Due date (Gantt, opcional)",
+					default: "",
+				},
+				{
+					type: "text",
+					key: "durationProperty",
+					displayName:
+						"Duração em minutos (Gantt, opcional, ex: note.timeEstimate)",
+					default: "",
+				},
+				{
+					type: "text",
+					key: "groupProperty",
+					displayName:
+						"Grupo (Gantt / séries, opcional, ex: note.projects)",
+					default: "",
+				},
+			] as any,
 		});
 	}
 
