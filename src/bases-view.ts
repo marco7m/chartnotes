@@ -35,7 +35,7 @@ export class ChartNotesBasesView extends BasesView {
 			return;
 		}
 
-		// Lê as opções configuradas na view
+		// Opções da view do Bases
 		const chartTypeRaw =
 			(this.config.get("chartType") as string | undefined) ?? "bar";
 		const chartType = (chartTypeRaw || "bar").trim() || "bar";
@@ -52,11 +52,9 @@ export class ChartNotesBasesView extends BasesView {
 			(this.config.get("startProperty") as string | undefined)?.trim() ??
 			"";
 		const endPropId =
-			(this.config.get("endProperty") as string | undefined)?.trim() ??
-			"";
+			(this.config.get("endProperty") as string | undefined)?.trim() ?? "";
 		const duePropId =
-			(this.config.get("dueProperty") as string | undefined)?.trim() ??
-			"";
+			(this.config.get("dueProperty") as string | undefined)?.trim() ?? "";
 		const durationPropId =
 			(this.config.get("durationProperty") as string | undefined)?.trim() ??
 			"";
@@ -122,7 +120,7 @@ export class ChartNotesBasesView extends BasesView {
 			aggregate: {},
 		};
 
-		// só pra documentar intenção; o renderer praticamente não usa aggregate
+		// Y vazio em gráficos agregados = count
 		if (!yPropId && chartType !== "gantt" && chartType !== "scatter") {
 			(spec.aggregate as any).y = "count";
 		}
@@ -160,10 +158,11 @@ export class ChartNotesBasesView extends BasesView {
 		yPropId: string,
 		seriesPropId: string
 	): QueryResultRow[] {
+		// bucket.x agora é string (compatível com QueryResultRow.x)
 		const agg = new Map<
 			string,
 			{
-				x: unknown;
+				x: string;
 				series?: string;
 				sumY: number;
 				count: number;
@@ -177,7 +176,7 @@ export class ChartNotesBasesView extends BasesView {
 			const filePath: string = file?.path ?? "";
 
 			// X: propriedade configurada ou nome da nota
-			let xVal: unknown;
+			let xVal: string;
 			if (xPropId) {
 				const v: any = entry.getValue(xPropId);
 				const s = v?.toString?.();
@@ -207,7 +206,7 @@ export class ChartNotesBasesView extends BasesView {
 				yNumber = n;
 			}
 
-			const key = `${String(xVal)}||${series ?? ""}`;
+			const key = `${xVal}||${series ?? ""}`;
 			let bucket = agg.get(key);
 			if (!bucket) {
 				bucket = {
@@ -228,7 +227,7 @@ export class ChartNotesBasesView extends BasesView {
 		for (const bucket of agg.values()) {
 			const y = yPropId ? bucket.sumY : bucket.count;
 			rows.push({
-				x: bucket.x,
+				x: bucket.x, // string -> ok para QueryResultRow.x
 				y,
 				series: bucket.series,
 				notes: bucket.notes,
