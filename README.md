@@ -1,4 +1,3 @@
-````markdown
 # Chart Notes
 
 Visualize your Obsidian notes as charts — using only YAML.
@@ -24,7 +23,7 @@ Chart Notes reads properties from your notes (YAML frontmatter / properties) and
 2. In BRAT settings, choose **Add beta plugin**.
 3. Use this repo:
 
-   ```text
+```text
    marco7m/chartnotes
 ````
 
@@ -750,8 +749,5 @@ options:
 
 Suggestions and ideas are very welcome 🙂
 
-```
 
-::contentReference[oaicite:0]{index=0}
-```
 
