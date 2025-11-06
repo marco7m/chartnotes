@@ -1,9 +1,43 @@
-# Chart Notes – Guia de Uso
+````markdown
+# Chart Notes
 
-Este plugin permite criar gráficos a partir dos **properties/YAML** das notas no Obsidian usando blocos de código:
+Visualize your Obsidian notes as charts — using only YAML.
+
+Chart Notes reads properties from your notes (YAML frontmatter / properties) and lets you create:
+
+- **Bar**, **stacked bar**, **line**, **area**, **pie**, **scatter**
+- **Table** views
+- An interactive **Gantt** with editing (start/end/estimate/due)
+
+…all from simple ` ```chart ` code blocks.
+
+> ⚠️ **Early alpha** – I use this in my own vault, but the DSL and options may still change.  
+> If something breaks, please open an issue with the chart YAML you used.
+
+---
+
+## 1. Installation
+
+### 1.1. Via BRAT (recommended for now)
+
+1. Install the Obsidian community plugin **BRAT** (“Beta Reviewers Auto-update Tester”).
+2. In BRAT settings, choose **Add beta plugin**.
+3. Use this repo:
+
+   ```text
+   marco7m/chartnotes
+````
+
+4. Pick a version (latest release) and click **Add plugin**.
+5. Enable **Chart Notes** in Obsidian → Settings → Community plugins.
+
+---
+
+## 2. Basic usage
+
+Anywhere you can write Markdown, you can insert a `chart` code block:
 
 ```chart
-# tudo aqui dentro é YAML
 type: bar
 source:
   paths: ["TaskNotes/"]
@@ -13,102 +47,116 @@ encoding:
 aggregate:
   y: count
 options:
-  title: "Tasks por status"
-````
-
-Qualquer lugar que você puder escrever markdown, você pode colocar um bloco ` ```chart ` e o plugin renderiza o gráfico.
-
----
-
-## 1. Estrutura básica do bloco
-
-Todo gráfico segue a mesma estrutura geral:
-
-```yaml
-type: <tipo>
-source:
-  paths: [...]
-  tags: [...]
-  where:
-    - "<condição>"
-    - "<condição 2>"
-encoding:
-  x: <campo>
-  y: <campo>
-  series: <campo>  # opcional
-aggregate:
-  y: sum|avg|min|max|count
-  cumulative: true|false   # opcional (line/area)
-  rolling: "7d"            # opcional (line/area)
-sort:
-  x: asc|desc
-options:
-  title: "Título"
-  background: "#ffffff"
-  # outros campos específicos (gantt, tabela, etc.)
+  title: "Tasks by status"
 ```
 
-### Campos principais
+The plugin parses the YAML and renders a chart in place.
 
-- **`type`** – tipo do gráfico:
-    
-    - `bar`, `line`, `area`, `pie`, `scatter`, `stacked-bar`, `table`, `gantt`
-        
-- **`source`** – de onde vêm as notas
-    
-- **`encoding`** – mapeia campos das notas para eixos / cores
-    
-- **`aggregate`** – como agrupar/somar dados
-    
-- **`sort`** – ordenação dos pontos
-    
-- **`options`** – visual / comportamento
-    
+Your data comes from note properties, for example:
+
+```yaml
+---
+status: open
+priority: normal
+scheduled: 2025-11-03
+projects:
+  - "[[Project ABC]]"
+timeEstimate: 180
+dateCreated: 2025-11-03T10:26:06.594-03:00
+dateModified: 2025-11-03T10:29:31.540-03:00
+tags:
+  - tasknote
+---
+```
 
 ---
 
-## 2. `source`: quais notas entram no gráfico
+## 3. Chart block structure (DSL)
 
-### 2.1. `paths`
+Every chart uses the same overall shape:
 
-Filtra por caminho de arquivo:
+```yaml
+type: bar | line | area | pie | scatter | stacked-bar | table | gantt
+
+source:
+  paths: ["TaskNotes/"]     # optional
+  tags: ["tasknote"]        # optional
+  where:
+    - "status == 'open'"    # optional conditions
+
+encoding:
+  x: fieldName              # required for most types
+  y: fieldName              # required for most types
+  series: fieldName         # optional (colors / multiple series)
+
+  # Gantt-specific:
+  start: fieldName          # start date (optional)
+  end: fieldName            # end date (required)
+  duration: fieldName       # in minutes (optional)
+  due: fieldName            # optional deadline
+  group: fieldName          # group / project lane
+  label: fieldName          # label on the left
+
+aggregate:
+  y: sum | avg | min | max | count
+  cumulative: true          # optional (line/area)
+  rolling: "7d"             # optional (line/area – moving average)
+
+sort:
+  x: asc | desc
+
+options:
+  title: "Chart title"
+  background: "#ffffff"
+  drilldown: true | false   # click to see notes
+  editable: true | false    # Gantt: enable edit modal
+  tableColumns: [...]       # table-specific
+```
+
+---
+
+## 4. `source`: which notes are included
+
+### 4.1. `paths`
+
+Filter by file path (folder prefix):
 
 ```yaml
 source:
   paths: ["TaskNotes/"]
 ```
 
-- `"TaskNotes/"` → todas as notas dentro dessa pasta (recursivo)
-    
-- Você pode passar vários caminhos:
-    
-    ```yaml
-    source:
-      paths:
-        - "TaskNotes/"
-        - "Projects/"
-    ```
-    
+* `"TaskNotes/"` → all notes inside that folder (recursively).
+* You can pass multiple paths:
 
-### 2.2. `tags`
+```yaml
+source:
+  paths:
+    - "TaskNotes/"
+    - "Projects/"
+```
 
-Filtra por tag (sem `#`):
+If `paths` is omitted, the plugin uses all indexed notes (or your default paths from settings, if configured).
+
+### 4.2. `tags`
+
+Filter by tags (without `#`):
 
 ```yaml
 source:
   tags: ["tasknote"]
 ```
 
-Você também pode combinar `paths` e `tags`:
+You can also combine `paths` and `tags`:
 
-- Se tiver **paths e tags**, uma nota entra se **bater em pelo menos um** (OR).
-    
+* If both are present, a note is included if it matches **at least one**
+  (path **OR** tag).
 
-### 2.3. `where`: condições
+### 4.3. `where`: conditions
 
-Lista de condições em string. Exemplos:
+`where` is a list of simple conditions written as strings.
 
-#### Igualdade
+#### Equality
 
 ```yaml
 where:
@@ -116,7 +164,7 @@ where:
   - "priority == 'higher'"
 ```
 
-#### Comparação numérica
+#### Numeric comparison
 
 ```yaml
 where:
@@ -124,7 +172,7 @@ where:
   - "timeEstimate >= 60"
 ```
 
-#### Intervalos de data (`between`)
+#### Date ranges: `between`
 
 ```yaml
 where:
@@ -133,122 +181,99 @@ where:
   - "scheduled between -14d and 0"
 ```
 
-Sintaxe suportada:
+Supported date “literals”:
 
-- datas absolutas: `2025-10-29`
-    
-- datas relativas:
-    
-    - `today` → hoje
-        
-    - `0` → hoje
-        
-    - `-7d` → 7 dias para trás
-        
-    - `+10d` → 10 dias para frente
-        
-    - `-30d` → 30 dias para trás
-        
-- `between A and B` leva em conta o **dia inteiro**
-    
+* Absolute dates: `2025-10-29`
+* Relative:
 
-Exemplo usado:
+  * `today` → today
+  * `0` → today
+  * `-7d` → 7 days ago
+  * `+10d` → 10 days ahead
+  * `-30d` → 30 days ago
 
-```yaml
-where:
-  - "scheduled between -30d and 0"
-```
+`between A and B` includes the whole days for A and B.
+
+You can combine multiple conditions; a note must satisfy **all** of them.
 
 ---
 
-## 3. `encoding`: campos → eixos / cores
+## 5. `encoding`: properties → axes / colors
 
-O `encoding` diz **como as propriedades da nota viram visual**.
+### 5.1. Generic fields (bar / line / area / stacked-bar / pie / scatter)
 
-### 3.1. Campos gerais (para bar/line/area/stacked-bar/pie/scatter)
+* `x` – what goes on the X axis (date, status, priority, etc.)
+* `y` – numeric value, or a field that will be **counted** if you use `count`
+* `series` – splits data into multiple series / colors (status, priority, project…)
 
-- `x` – campo usado no **eixo X** ou categoria
-    
-- `y` – valor numérico ou campo a ser contado
-    
-- `series` – separa linhas / cores por categoria (status, prioridade…)
-    
+Examples:
 
-Exemplos:
+Count notes by status:
 
 ```yaml
 encoding:
   x: status
   y: status
-```
-
-Com:
-
-```yaml
 aggregate:
   y: count
 ```
 
-→ conta quantas notas há por `status`.
+Sum of time per scheduled day:
 
 ```yaml
 encoding:
   x: scheduled
   y: timeEstimate
+aggregate:
+  y: sum
 ```
 
-→ soma (ou o que você definir em `aggregate.y`) dos `timeEstimate` por dia.
+Same, but split by status (series):
 
 ```yaml
 encoding:
   x: scheduled
   y: timeEstimate
   series: status
+aggregate:
+  y: sum
 ```
 
-→ tempo estimado por dia, **quebrado por status** (cada status é uma cor/linha/grupo).
+### 5.2. Gantt encoding
 
----
-
-### 3.2. `encoding` para `gantt`
-
-Gantt tem campos especiais:
+Gantt uses special fields:
 
 ```yaml
 encoding:
-  end: scheduled         # fim planejado (data)
-  duration: timeEstimate # em minutos
-  start: startDate       # opcional, se tiver, ignora duration
-  due: due               # opcional, deadline
-  group: projects        # agrupa visualmente (ex.: projeto)
-  label: name            # texto à esquerda (se array, pega o primeiro)
-  series: status         # cor da barra
+  end: scheduled         # planned finish date (required)
+  duration: timeEstimate # minutes (optional)
+  start: startDate       # explicit start (optional)
+  due: due               # deadline (optional)
+  group: projects        # group / swimlane (project, context...)
+  label: name            # label on the left (if array, first element)
+  series: status         # bar color
 ```
 
-Regra:
+Rules:
 
-- **`end` é obrigatório** (normalmente `scheduled`)
-    
-- Se tiver **`start`**, ele manda e **ignora `duration`**
-    
-- Se não tiver `start`, mas tiver `duration`, usa:
-    
-    > start = end – duration (em minutos)
-    
-- `due` desenha uma linha de deadline
-    
-- `group` organiza por projeto (ou qualquer campo) visualmente
-    
-- `series` pinta as barras por status (ou outra categoria)
-    
+* `end` is the only required field.
+* If `start` exists:
 
----
+  * `start` + `end` define the bar.
+  * `duration` is ignored for the geometry.
+* If `start` is missing but `duration` is present:
 
-### 3.3. `encoding` para `table`
+  * `start = end - duration (minutes)`.
+* `due` draws a vertical deadline line.
+* `group` groups tasks visually under a header (typically projects).
+* `label` is the task label on the left.
+* `series` controls the bar color (e.g. by `status`).
 
-A tabela usa o `source` para buscar as notas e mostra as `props`.
+### 5.3. Table encoding
 
-Você pode sugerir colunas via `options.tableColumns`:
+Table uses `source` to find notes and renders a table.
+
+You can suggest columns with `options.tableColumns`:
 
 ```yaml
 type: table
@@ -260,30 +285,25 @@ encoding:
   x: status
   y: priority
 options:
-  title: "Últimos dias"
+  title: "Last few days"
   tableColumns: ["status","priority","scheduled","projects"]
 ```
 
 ---
 
-## 4. `aggregate`: como agrupar / somar
+## 6. `aggregate`: grouping and math
 
-### 4.1. `aggregate.y`
+### 6.1. `aggregate.y`
 
-Valores possíveis:
+Available aggregations:
 
-- `sum` – soma
-    
-- `avg` – média
-    
-- `min` – mínimo
-    
-- `max` – máximo
-    
-- `count` – quantidade de notas
-    
+* `sum` – sum of values
+* `avg` – average
+* `min` – minimum
+* `max` – maximum
+* `count` – number of notes
 
-Exemplo – contagem por status:
+Count by status:
 
 ```yaml
 encoding:
@@ -293,7 +313,7 @@ aggregate:
   y: count
 ```
 
-Exemplo – soma de estimativas por dia:
+Sum of estimates per day:
 
 ```yaml
 encoding:
@@ -303,11 +323,9 @@ aggregate:
   y: sum
 ```
 
----
+### 6.2. Cumulative line / area
 
-### 4.2. `cumulative` (linha cumulativa)
-
-Disponível para `type: line` e `type: area`:
+For `type: line` or `type: area`:
 
 ```yaml
 aggregate:
@@ -315,12 +333,12 @@ aggregate:
   cumulative: true
 ```
 
-Semântica:
+Meaning:
 
-> Em vez de mostrar “quantas tasks em cada dia”, mostra  
-> “quantas tasks eu já tinha até aquele dia” (soma acumulada).
+> Instead of “value per day”, show
+> “sum of all values up to this day” (running total).
 
-Exemplo:
+Example:
 
 ```yaml
 type: line
@@ -337,38 +355,28 @@ aggregate:
 sort:
   x: asc
 options:
-  title: "Tasks criadas (30 dias, acumulado)"
+  title: "Tasks created (30 days, cumulative)"
   background: "#ffffff"
 ```
 
-> Dica: a ordem (`sort.x`) importa. A soma é feita **na ordem escolhida**.
+> 💡 The cumulative sum uses the order defined by `sort.x`.
 
----
+### 6.3. Rolling / moving average
 
-### 4.3. `rolling` (média móvel)
-
-Também para `line`/`area`:
+Still for `line` / `area`:
 
 ```yaml
 aggregate:
   y: sum
-  rolling: "7d"
+  rolling: "7d"   # or 7
 ```
 
-ou
+Meaning:
 
-```yaml
-aggregate:
-  y: sum
-  rolling: 7
-```
+> For each point, use the average of the last N points (per series).
+> This is useful to smooth noisy daily data.
 
-Semântica:
-
-> Para cada ponto, o valor vira a média dos últimos N pontos (por série).  
-> Útil para suavizar variação de dia a dia.
-
-Exemplo:
+Example:
 
 ```yaml
 type: line
@@ -382,125 +390,96 @@ aggregate:
   y: sum
   rolling: "7d"
 options:
-  title: "Tempo estimado (média móvel 7d por status)"
+  title: "Estimated time (7-day moving average by status)"
   background: "#ffffff"
 ```
 
 ---
 
-## 5. `sort`: ordenação
+## 7. `sort`: ordering
 
-Hoje temos:
-
-```yaml
-sort:
-  x: asc   # ou desc
-```
-
-- Afeta apenas o eixo X (datas, prioridades, etc.)
-    
-- Para gráficos cumulativos/rolling, a ordem é usada para:
-    
-    - calcular o acumulado/rolling
-        
-    - desenhar o gráfico
-        
-
-Exemplo:
+Currently:
 
 ```yaml
 sort:
-  x: asc   # timeline normal
+  x: asc   # or desc
 ```
+
+* Affects the order of X values.
+* For cumulative / rolling charts, the order also defines how the cumulative or rolling value is computed.
 
 ---
 
-## 6. `options`: aparência e comportamento
+## 8. `options`: look & behavior
 
-Campos principais:
+Main fields:
 
 ```yaml
 options:
-  title: "Título do gráfico"
+  title: "Chart title"
   background: "#ffffff"
-  drilldown: true|false   # se clique abre lista de notas
-  editable: true|false    # Gantt: se pode editar na modal
+  drilldown: true        # on click, show notes list
+  editable: true         # Gantt: enable edit modal
+  tableColumns: [...]    # Table only
 ```
 
-- `title` – aparece acima do gráfico
-    
-- `background` – cor de fundo do gráfico (ex.: `"#ffffff"` no tema escuro)
-    
-- `drilldown` – se verdadeiro, clicar em um ponto/barra mostra a lista de notas
-    
-- `editable` (Gantt) – se verdadeiro, clicar em uma barra abre modal para ajustar datas/estimate
-    
+* `title` – text above the chart.
+* `background` – background color; set to `"#ffffff"` for light charts on a dark theme.
+* `drilldown` – if `true`, clicking a bar / point opens a list of notes below.
+* `editable` (Gantt) – if `true`, clicking a bar opens a modal to edit start/end/estimate/due.
 
 ---
 
-## 7. Interações no gráfico
+## 9. Interaction
 
-### 7.1. Todos os gráficos (bar, line, area, pie, scatter, stacked-bar)
+### 9.1. All charts (bar, stacked-bar, line, area, pie, scatter, table)
 
-- **Hover (passar o mouse)**:
-    
-    - Aparece tooltip com:
-        
-        - título (categoria / série)
-            
-        - valor
-            
-        - quantidade de notas envolvidas
-            
-- **Clique em barra/ponto/fatia**:
-    
-    - Abre um painel embaixo com:
-        
-        - título do ponto
-            
-        - valor (y)
-            
-        - lista de notas (paths)
-            
-    - Clicar no nome da nota abre a nota no Obsidian (normalmente em nova aba)
-        
+* **Hover**: shows a tooltip with:
 
-### 7.2. Gantt
+  * label (category / date / series)
+  * value
+  * number of notes
+* **Click on bar/point/segment**:
 
-- **Barra**:
-    
-    - Hover: tooltip com nome da tarefa, datas de início/fim, estimate, due (se tiver)
-        
-    - Clique:
-        
-        - Abre **modal de edição**, com:
-            
-            - nome completo da nota (clicável)
-                
-            - campos para ajustar:
-                
-                - start
-                    
-                - end
-                    
-                - estimate
-                    
-                - due (se implementado)
-                    
-        - salvar → atualiza a nota (YAML) e o gráfico (pós refresh do markdown)
-            
-- **Nome da tarefa (label)**:
-    
-    - Hover: tooltip com nome completo
-        
-    - Clique: mesmo comportamento da barra (abre modal de edição)
-        
+  * Opens a details panel listing all note paths for that point.
+  * Clicking a note opens it in Obsidian.
+
+### 9.2. Gantt
+
+* **Hover bar or task name**:
+
+  * Tooltip with:
+
+    * full note title
+    * start → end dates
+    * estimate (if available) or duration
+    * due date
+    * extra fields (status, priority, etc.)
+* **Click bar or task name**:
+
+  * Opens a **modal** for that task:
+
+    * Full note title (clickable → open note)
+    * Inputs for:
+
+      * start date
+      * end date
+      * estimate (minutes)
+      * due date (if configured)
+  * Saving updates the note’s YAML and refreshes the chart (after Obsidian re-renders the block).
+* **Zoom / fit controls** (for Gantt):
+
+  * `Fit / 100% / 150% / 200%` to adjust horizontal scale.
+  * A “fullscreen” button opens the chart in a big modal.
 
 ---
 
-## 8. Exemplos prontos (receitas)
+## 10. Examples (“recipes”)
 
-### 8.1. Tasks por status
+Below are some ready-to-use charts.
+They assume your tasks live under `TaskNotes/` and use properties like `status`, `priority`, `scheduled`, `timeEstimate`, `dateCreated`, etc.
+
+### 10.1. Tasks by status
 
 ```chart
 type: bar
@@ -514,12 +493,10 @@ aggregate:
 sort:
   x: asc
 options:
-  title: "Tasks por status"
+  title: "Tasks by status"
 ```
 
----
-
-### 8.2. Tasks por prioridade
+### 10.2. Tasks by priority
 
 ```chart
 type: bar
@@ -533,12 +510,10 @@ aggregate:
 sort:
   x: asc
 options:
-  title: "Tasks por prioridade"
+  title: "Tasks by priority"
 ```
 
----
-
-### 8.3. Tasks abertas por prioridade
+### 10.3. Open tasks by priority
 
 ```chart
 type: bar
@@ -554,12 +529,10 @@ aggregate:
 sort:
   x: asc
 options:
-  title: "Tasks abertas por prioridade"
+  title: "Open tasks by priority"
 ```
 
----
-
-### 8.4. Minutos estimados por dia
+### 10.4. Estimated minutes per day
 
 ```chart
 type: bar
@@ -575,12 +548,10 @@ aggregate:
 sort:
   x: asc
 options:
-  title: "Minutos estimados por dia"
+  title: "Estimated minutes per day"
 ```
 
----
-
-### 8.5. Tasks criadas ao longo do tempo
+### 10.5. Tasks created over time
 
 ```chart
 type: line
@@ -594,13 +565,11 @@ aggregate:
 sort:
   x: asc
 options:
-  title: "Tasks criadas ao longo do tempo"
+  title: "Tasks created over time"
   background: "#ffffff"
 ```
 
----
-
-### 8.6. Tempo estimado (open) por prioridade
+### 10.6. Estimated time (open) by priority
 
 ```chart
 type: bar
@@ -617,12 +586,10 @@ aggregate:
 sort:
   x: asc
 options:
-  title: "Tempo estimado (open) por prioridade"
+  title: "Estimated time (open) by priority"
 ```
 
----
-
-### 8.7. Tasks de uma data específica
+### 10.7. Tasks on a specific date
 
 ```chart
 type: bar
@@ -636,12 +603,10 @@ encoding:
 aggregate:
   y: count
 options:
-  title: "Tasks de 2025-10-29 por status"
+  title: "Tasks on 2025-10-29 by status"
 ```
 
----
-
-### 8.8. Tempo estimado total por status
+### 10.8. Total estimated time by status
 
 ```chart
 type: bar
@@ -655,125 +620,10 @@ encoding:
 aggregate:
   y: sum
 options:
-  title: "Tempo estimado total por status"
+  title: "Total estimated time by status"
 ```
 
----
-
-### 8.9. Dashboard de tasks (exemplo de “painel”)
-
-#### Tasks por status
-
-```chart
-type: bar
-source:
-  tags: ["tasknote"]
-encoding:
-  x: status
-  y: status
-aggregate:
-  y: count
-options:
-  title: "Tasks por status"
-```
-
-#### Tasks criadas ao longo do tempo
-
-```chart
-type: line
-source:
-  paths: ["TaskNotes/"]
-encoding:
-  x: dateCreated
-  y: dateCreated
-aggregate:
-  y: count
-sort:
-  x: asc
-options:
-  title: "Tasks criadas ao longo do tempo"
-```
-
-#### Tasks de hoje
-
-```chart
-type: bar
-source:
-  paths: ["TaskNotes/"]
-  where:
-    - "scheduled == 0"
-encoding:
-  x: status
-  y: status
-aggregate:
-  y: count
-options:
-  title: "Tasks de hoje por status"
-  background: "#ffffff"
-```
-
-#### Tasks criadas nos últimos 30 dias
-
-```chart
-type: line
-source:
-  paths: ["TaskNotes/"]
-  where:
-    - "dateCreated between -30d and today"
-encoding:
-  x: dateCreated
-  y: dateCreated
-aggregate:
-  y: count
-sort:
-  x: asc
-options:
-  title: "Tasks criadas (30 dias)"
-  background: "#ffffff"
-```
-
-#### Tasks criadas (30 dias, acumulado)
-
-```chart
-type: line
-source:
-  paths: ["TaskNotes/"]
-  where:
-    - "dateCreated between -30d and today"
-encoding:
-  x: dateCreated
-  y: dateCreated
-aggregate:
-  y: count
-  cumulative: true
-sort:
-  x: asc
-options:
-  title: "Tasks criadas (30 dias, acumulado)"
-  background: "#ffffff"
-```
-
-#### Tasks criadas (últimos 7 dias)
-
-```chart
-type: line
-source:
-  paths: ["TaskNotes/"]
-  where:
-    - "dateCreated between -7d and today"
-encoding:
-  x: dateCreated
-  y: dateCreated
-aggregate:
-  y: count
-sort:
-  x: asc
-options:
-  title: "Tasks criadas (últimos 7 dias)"
-  background: "#ffffff"
-```
-
-#### Distribuição de status (30 dias)
+### 10.9. Status distribution (last 30 days)
 
 ```chart
 type: pie
@@ -787,11 +637,11 @@ encoding:
 aggregate:
   y: count
 options:
-  title: "Distribuição de status (30 dias)"
+  title: "Status distribution (30 days)"
   background: "#ffffff"
 ```
 
-#### Stacked: prioridade por status (14d)
+### 10.10. Stacked: priority by status (14 days)
 
 ```chart
 type: stacked-bar
@@ -806,11 +656,11 @@ encoding:
 aggregate:
   y: count
 options:
-  title: "Stacked: prioridade por status (14d)"
+  title: "Stacked: priority by status (14 days)"
   background: "#ffffff"
 ```
 
-#### Scatter: estimativa vs data (30d)
+### 10.11. Scatter: estimate vs date (30 days)
 
 ```chart
 type: scatter
@@ -819,14 +669,14 @@ source:
   where:
     - "dateCreated between -30d and 0"
 encoding:
-  x: dateCreated   # vira timestamp
-  y: timeEstimate  # precisa ser número
+  x: dateCreated   # becomes timestamp
+  y: timeEstimate  # must be numeric
 options:
-  title: "Scatter: estimativa vs data (30d)"
+  title: "Scatter: estimate vs date (30 days)"
   background: "#ffffff"
 ```
 
-#### Área: tasks criadas (30d)
+### 10.12. Area: tasks created (30 days)
 
 ```chart
 type: area
@@ -842,11 +692,11 @@ aggregate:
 sort:
   x: asc
 options:
-  title: "Tasks criadas (30d)"
+  title: "Tasks created (30 days)"
   background: "#ffffff"
 ```
 
-#### Tabela: últimos dias
+### 10.13. Table: last few days
 
 ```chart
 type: table
@@ -858,11 +708,11 @@ encoding:
   x: status
   y: priority
 options:
-  title: "Últimos dias (tabela)"
+  title: "Last few days (table)"
   tableColumns: ["status","priority","scheduled","projects"]
 ```
 
-#### Gantt: tasks (7 dias)
+### 10.14. Gantt: tasks (7 days)
 
 ```chart
 type: gantt
@@ -871,17 +721,37 @@ source:
   where:
     - "scheduled > -7d"
 encoding:
-  end: scheduled         # fim planejado
-  duration: timeEstimate # duração em minutos
-  due: due               # opcional
+  end: scheduled         # planned finish date
+  duration: timeEstimate # duration in minutes
+  due: due               # optional deadline
   group: projects
   start: startDate
   label: name
-  series: status         # cor
+  series: status         # color
 options:
-  title: "Gantt – tasks (7 dias)"
+  title: "Gantt – tasks (7 days)"
   background: "#ffffff"
   editable: true
 ```
 
+---
+
+## 11. Status / feedback
+
+* This plugin is **early alpha**, used mainly in my personal workflow.
+* The YAML DSL might change as I refine it.
+* If you hit a bug:
+
+  * Open an issue with:
+
+    * your chart YAML
+    * a sample note frontmatter (anonymized if needed)
+    * screenshot if it helps.
+
+Suggestions and ideas are very welcome 🙂
+
+```
+
+::contentReference[oaicite:0]{index=0}
+```
 
