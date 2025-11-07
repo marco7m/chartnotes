@@ -10,39 +10,28 @@ import type { PropChartsRenderer, RenderContext } from "./renderer";
 
 export const CHARTNOTES_BASES_VIEW_TYPE = "chartnotes-view";
 
-const CHART_TYPES = [
-  "bar",
-  "stacked-bar",
-  "line",
-  "area",
-  "pie",
-  "scatter",
-  "gantt",
-] as const;
-
+const CHART_TYPES = ["bar","stacked-bar","line","area","pie","scatter","gantt"] as const;
 type AllowedChartType = (typeof CHART_TYPES)[number];
 
 function normalizeChartType(raw: unknown): AllowedChartType {
   const t = String(raw ?? "bar").trim().toLowerCase();
-  return (CHART_TYPES.includes(t as AllowedChartType)
-    ? t
-    : "bar") as AllowedChartType;
+  return (CHART_TYPES.includes(t as AllowedChartType) ? t : "bar") as AllowedChartType;
 }
 
-// modos de agregação
-const AGGREGATION_MODES = [
-  "sum",
-  "count",
-  "cumulative-sum",
-] as const;
-
+const AGGREGATION_MODES = ["sum","count","cumulative-sum"] as const;
 type AggregationMode = (typeof AGGREGATION_MODES)[number];
 
 function normalizeAggregationMode(raw: unknown): AggregationMode {
   const t = String(raw ?? "sum").trim().toLowerCase();
-  return (AGGREGATION_MODES.includes(t as AggregationMode)
-    ? t
-    : "sum") as AggregationMode;
+  return (AGGREGATION_MODES.includes(t as AggregationMode) ? t : "sum") as AggregationMode;
+}
+
+const X_BUCKETS = ["auto","none","day","week","month","quarter","year"] as const;
+type XBucket = (typeof X_BUCKETS)[number];
+
+function normalizeXBucket(raw: unknown): XBucket {
+  const t = String(raw ?? "auto").trim().toLowerCase();
+  return (X_BUCKETS.includes(t as XBucket) ? t : "auto") as XBucket;
 }
 
 type SelectedProp = { id: string | null; name: string | null };
@@ -79,37 +68,38 @@ export class ChartNotesBasesView extends BasesView {
 
     const cfg: any = (this as any).config;
 
-    const rawType = (cfg?.get("chartType") as string | undefined) ?? "bar";
-    const chartType = normalizeChartType(rawType);
-
-    const aggRaw = cfg?.get("aggregateMode");
-    const aggModeConfig = normalizeAggregationMode(aggRaw);
-
-    // cumulative só faz sentido em line/area. Nos outros tratamos como sum
-    const allowCumulative =
-      chartType === "line" || chartType === "area";
+    const chartType = normalizeChartType(cfg?.get("chartType") ?? "bar");
+    const aggModeCfg = normalizeAggregationMode(cfg?.get("aggregateMode"));
+    const allowCumulative = chartType === "line" || chartType === "area";
     const aggMode: AggregationMode =
-      aggModeConfig === "cumulative-sum" && !allowCumulative
-        ? "sum"
-        : aggModeConfig;
+      aggModeCfg === "cumulative-sum" && !allowCumulative ? "sum" : aggModeCfg;
+
+    const xBucket = normalizeXBucket(cfg?.get("xBucket"));
 
     const xProp = this.getPropFromConfig("xProperty");
     const yProp = this.getPropFromConfig("yProperty");
-    const seriesProp = this.getPropFromConfig("seriesProperty");
+
+    let seriesProp = this.getPropFromConfig("seriesProperty");
+    const isPie = chartType === "pie";
+    if (isPie) {
+      // Pra Pie, sempre agregar só por X independentemente de série salva
+      seriesProp = { id: null, name: null };
+    }
+
     const startProp = this.getPropFromConfig("startProperty");
     const endProp = this.getPropFromConfig("endProperty");
     const dueProp = this.getPropFromConfig("dueProperty");
+    const scheduledProp = this.getPropFromConfig("scheduledProperty");
     const durationProp = this.getPropFromConfig("durationProperty");
     const groupProp = this.getPropFromConfig("groupProperty");
 
     const isGantt = chartType === "gantt";
     const isScatter = chartType === "scatter";
 
-    // feedbacks claros
     if (!isGantt && !xProp.id) {
       this.rootEl.createDiv({
         cls: "prop-charts-empty",
-        text: "Configure the 'X axis / label' property in view options.",
+        text: "Configure the 'Category / X axis' property in view options.",
       });
       return;
     }
@@ -122,10 +112,13 @@ export class ChartNotesBasesView extends BasesView {
       return;
     }
 
-    if (isGantt && (!startProp.id || !endProp.id)) {
+    if (
+      isGantt &&
+      !(startProp.id || endProp.id || scheduledProp.id || dueProp.id)
+    ) {
       this.rootEl.createDiv({
         cls: "prop-charts-empty",
-        text: "Gantt charts need Start and End properties configured.",
+        text: "Gantt needs Start/End or Scheduled/Due with Duration.",
       });
       return;
     }
@@ -140,6 +133,7 @@ export class ChartNotesBasesView extends BasesView {
         startProp,
         endProp,
         dueProp,
+        scheduledProp,
         durationProp,
         groupProp,
       );
@@ -152,6 +146,7 @@ export class ChartNotesBasesView extends BasesView {
         yProp,
         seriesProp,
         aggMode,
+        xBucket,
       );
     }
 
@@ -164,6 +159,11 @@ export class ChartNotesBasesView extends BasesView {
     }
 
     const result: QueryResult = { rows };
+    const titleRaw = (cfg?.get("title") as string | undefined) ?? "";
+    const title = titleRaw.trim() || cfg?.name || "Chart Notes (Bases)";
+    const drilldownCfg = cfg?.get("drilldown");
+    const drilldown =
+      typeof drilldownCfg === "boolean" ? drilldownCfg : true;
 
     const encoding = this.buildEncoding({
       x: xProp,
@@ -175,38 +175,21 @@ export class ChartNotesBasesView extends BasesView {
       duration: durationProp,
       group: groupProp,
       aggMode,
+      xBucket,
     });
-
-    const titleRaw = (cfg?.get("title") as string | undefined) ?? "";
-    const title = titleRaw.trim() || cfg?.name || "Chart Notes (Bases)";
-
-    const drilldownCfg = cfg?.get("drilldown");
-    const drilldown =
-      typeof drilldownCfg === "boolean" ? drilldownCfg : true;
 
     const spec: ChartSpec = {
       type: chartType as any,
-      source: {
-        type: "properties",
-        query: "",
-      } as any,
+      source: { type: "properties", query: "" } as any,
       encoding: encoding as any,
-      options: {
-        title,
-        drilldown,
-      },
+      options: { title, drilldown },
     };
 
-    const ctx: RenderContext = {
-      refresh: () => this.onDataUpdated(),
-    };
-
+    const ctx: RenderContext = { refresh: () => this.onDataUpdated() };
     this.renderer.render(this.rootEl, spec, result, ctx);
   }
 
-  // ---------------------------------------------------------------------------
-  // Helpers de propriedades
-  // ---------------------------------------------------------------------------
+  // ---------- helpers de propriedades/valores ----------
 
   private getPropFromConfig(key: string): SelectedProp {
     const cfg: any = (this as any).config;
@@ -214,17 +197,11 @@ export class ChartNotesBasesView extends BasesView {
     if (!raw) return { id: null, name: null };
 
     const trimmed = raw.trim();
-    // se por algum motivo veio "undefined" ou "null" em string, trata como vazio
-    if (
-      !trimmed ||
-      trimmed === "undefined" ||
-      trimmed === "null"
-    ) {
+    if (!trimmed || trimmed === "undefined" || trimmed === "null") {
       return { id: null, name: null };
     }
 
     const id = trimmed;
-
     try {
       const parsed = parsePropertyId(
         id as `note.${string}` | `file.${string}` | `formula.${string}`,
@@ -240,7 +217,6 @@ export class ChartNotesBasesView extends BasesView {
 
   private readValue(entry: any, prop: SelectedProp): string | null {
     if (!prop.id) return null;
-
     let value: any;
     try {
       value = entry.getValue(prop.id);
@@ -254,9 +230,7 @@ export class ChartNotesBasesView extends BasesView {
       if (typeof value.isEmpty === "function" && value.isEmpty()) {
         return null;
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     try {
       const s = value.toString();
@@ -270,29 +244,71 @@ export class ChartNotesBasesView extends BasesView {
 
   private parseDate(raw: string | null): Date | null {
     if (!raw) return null;
-    const s = raw.trim();
-    if (!s) return null;
-
-    const d = new Date(s);
-    if (!Number.isNaN(d.getTime())) return d;
-    return null;
+    const d = new Date(raw.trim());
+    return Number.isNaN(d.getTime()) ? null : d;
   }
 
   private compareX(a: any, b: any): number {
     const da = this.parseDate(a != null ? String(a) : null);
     const db = this.parseDate(b != null ? String(b) : null);
     if (da && db) return da.getTime() - db.getTime();
-
     const na = Number(a);
     const nb = Number(b);
     if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
-
     return String(a ?? "").localeCompare(String(b ?? ""));
   }
 
-  // ---------------------------------------------------------------------------
-  // Builders de linhas
-  // ---------------------------------------------------------------------------
+  // ---------- bucketing de datas ----------
+
+  private fmtDate(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  private startOfWeek(d: Date): Date {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const day = (x.getDay() + 6) % 7; // segunda como início
+    x.setDate(x.getDate() - day);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  }
+
+  private bucketX(rawX: string, mode: XBucket): string {
+    const d = this.parseDate(rawX);
+    if (!d) return rawX;
+
+    switch (mode) {
+      case "none":
+        return rawX;
+      case "auto":
+      case "day": {
+        const s = this.fmtDate(
+          new Date(d.getFullYear(), d.getMonth(), d.getDate()),
+        );
+        return s;
+      }
+      case "week": {
+        const s = this.startOfWeek(d);
+        return `${this.fmtDate(s)} (W)`;
+      }
+      case "month": {
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        return `${d.getFullYear()}-${m}`;
+      }
+      case "quarter": {
+        const q = Math.floor(d.getMonth() / 3) + 1;
+        return `${d.getFullYear()}-Q${q}`;
+      }
+      case "year":
+        return `${d.getFullYear()}`;
+      default:
+        return rawX;
+    }
+  }
+
+  // ---------- builders ----------
 
   private buildRowsForAggregatedCharts(
     groups: any[],
@@ -300,10 +316,10 @@ export class ChartNotesBasesView extends BasesView {
     yProp: SelectedProp,
     seriesProp: SelectedProp,
     aggMode: AggregationMode,
+    xBucket: XBucket,
   ): QueryResultRow[] {
     const byKey = new Map<string, QueryResultRow & { props: PropsMap }>();
 
-    // se Y estiver vazio, "sum" vira "count" na prática
     const treatAsCount =
       aggMode === "count" || (!yProp.id && aggMode !== "sum");
 
@@ -311,9 +327,10 @@ export class ChartNotesBasesView extends BasesView {
       for (const entry of group.entries as any[]) {
         const file = entry.file;
 
-        const xStr =
+        const rawX =
           this.readValue(entry, xProp) ??
           (file?.name ? String(file.name) : String(file?.path ?? ""));
+        const xStr = this.bucketX(rawX, xBucket);
 
         let yNum = 1;
         let yStr: string | null = null;
@@ -325,7 +342,6 @@ export class ChartNotesBasesView extends BasesView {
           if (Number.isNaN(n)) continue;
           yNum = n;
         } else {
-          // count: sempre 1
           yNum = 1;
         }
 
@@ -333,21 +349,13 @@ export class ChartNotesBasesView extends BasesView {
         const series = seriesStr != null ? String(seriesStr) : undefined;
 
         const key = `${xStr}@@${series ?? ""}`;
-
         let row = byKey.get(key);
         if (!row) {
-          row = {
-            x: xStr,
-            y: 0,
-            series,
-            notes: [],
-            props: {},
-          };
+          row = { x: xStr, y: 0, series, notes: [], props: {} };
           byKey.set(key, row);
         }
 
         row.y += yNum;
-
         if (file?.path) row.notes!.push(file.path);
 
         if (row.props && xProp.name) row.props[xProp.name] = xStr;
@@ -361,29 +369,18 @@ export class ChartNotesBasesView extends BasesView {
     }
 
     const rows = Array.from(byKey.values());
-
-    if (aggMode === "cumulative-sum") {
-      return this.toCumulative(rows);
-    }
-
+    if (aggMode === "cumulative-sum") return this.toCumulative(rows);
     return rows;
   }
 
   private toCumulative(rows: QueryResultRow[]): QueryResultRow[] {
     const bySeries = new Map<string, QueryResultRow[]>();
-
-    for (const row of rows) {
-      const key = row.series ?? "__no_series__";
-      let list = bySeries.get(key);
-      if (!list) {
-        list = [];
-        bySeries.set(key, list);
-      }
-      list.push(row);
+    for (const r of rows) {
+      const key = r.series ?? "__no_series__";
+      (bySeries.get(key) ?? bySeries.set(key, []).get(key)!).push(r);
     }
 
     const result: QueryResultRow[] = [];
-
     for (const [, list] of bySeries) {
       const sorted = [...list].sort((a, b) => this.compareX(a.x, b.x));
       let acc = 0;
@@ -391,11 +388,9 @@ export class ChartNotesBasesView extends BasesView {
         const yNum = Number(r.y ?? 0);
         if (Number.isNaN(yNum)) continue;
         acc += yNum;
-        r.y = acc;
-        result.push(r);
+        result.push({ ...r, y: acc });
       }
     }
-
     return result;
   }
 
@@ -442,6 +437,7 @@ export class ChartNotesBasesView extends BasesView {
     startProp: SelectedProp,
     endProp: SelectedProp,
     dueProp: SelectedProp,
+    scheduledProp: SelectedProp,
     durationProp: SelectedProp,
     groupProp: SelectedProp,
   ): QueryResultRow[] {
@@ -453,10 +449,33 @@ export class ChartNotesBasesView extends BasesView {
 
         const startStr = this.readValue(entry, startProp);
         const endStr = this.readValue(entry, endProp);
-        if (!startStr || !endStr) continue;
+        const dueStr = this.readValue(entry, dueProp);
+        const scheduledStr = this.readValue(entry, scheduledProp);
+        const durationStr = this.readValue(entry, durationProp);
 
-        const start = this.parseDate(startStr);
-        const end = this.parseDate(endStr);
+        const durationMin = durationStr != null ? Number(durationStr) : NaN;
+        const hasDuration = Number.isFinite(durationMin);
+
+        let start = this.parseDate(startStr);
+        let end = this.parseDate(endStr);
+        const due = this.parseDate(dueStr);
+        const scheduled = this.parseDate(scheduledStr);
+
+        // Fallbacks:
+        if (!start && hasDuration) {
+          if (scheduled) {
+            start = new Date(scheduled.getTime() - durationMin * 60_000);
+          } else if (due) {
+            start = new Date(due.getTime() - durationMin * 60_000);
+          } else if (end) {
+            start = new Date(end.getTime() - durationMin * 60_000);
+          }
+        }
+
+        if (!end && start && hasDuration) {
+          end = new Date(start.getTime() + durationMin * 60_000);
+        }
+
         if (!start || !end) continue;
 
         const label =
@@ -465,28 +484,14 @@ export class ChartNotesBasesView extends BasesView {
             ? String(file.name).replace(/\.md$/i, "")
             : String(file?.path ?? ""));
 
-        const dueStr = this.readValue(entry, dueProp);
-        const due = this.parseDate(dueStr ?? null);
-
-        const durationStr = this.readValue(entry, durationProp);
-        const durationMinutes =
-          durationStr != null ? Number(durationStr) : undefined;
-        const hasDuration =
-          typeof durationMinutes === "number" &&
-          !Number.isNaN(durationMinutes);
-
         const seriesStr = this.readValue(entry, seriesProp);
         const series = seriesStr != null ? String(seriesStr) : undefined;
 
         const groupVal = this.readValue(entry, groupProp);
 
         const props: PropsMap = {};
-        if (durationProp.name && hasDuration) {
-          props[durationProp.name] = durationMinutes;
-        }
-        if (groupProp.name && groupVal != null) {
-          props[groupProp.name] = groupVal;
-        }
+        if (hasDuration && durationProp.name) props[durationProp.name] = durationMin;
+        if (groupProp.name && groupVal != null) props[groupProp.name] = groupVal;
 
         rows.push({
           x: label,
@@ -514,21 +519,25 @@ export class ChartNotesBasesView extends BasesView {
     duration: SelectedProp;
     group: SelectedProp;
     aggMode: AggregationMode;
+    xBucket: XBucket;
   }): any {
-    let yName: string;
+    const isCount =
+      fields.aggMode === "count" ||
+      (!fields.y.id && fields.aggMode !== "sum");
 
-    if (fields.aggMode === "count" || (!fields.y.id && fields.aggMode !== "sum")) {
-      // count explícito, ou sum sem Y definido
-      yName = "Count";
-    } else if (fields.aggMode === "cumulative-sum") {
+    let yName: string;
+    if (isCount) yName = "Count";
+    else if (fields.aggMode === "cumulative-sum")
       yName = fields.y.name ? `${fields.y.name} (cumulative)` : "Cumulative";
-    } else {
-      // sum normal
-      yName = fields.y.name ? `${fields.y.name} (sum)` : "Value";
-    }
+    else yName = fields.y.name ? `${fields.y.name} (sum)` : "Value";
+
+    const xSuffix =
+      fields.xBucket && fields.xBucket !== "none"
+        ? ` (${fields.xBucket})`
+        : "";
 
     return {
-      x: fields.x.name ?? "x",
+      x: fields.x.name ? `${fields.x.name}${xSuffix}` : "x",
       y: yName,
       series: fields.series.name ?? "series",
       start: fields.start.name ?? "start",

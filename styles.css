@@ -301,3 +301,27 @@
   background: var(--background-secondary);
   color: var(--text-normal);
 }
+
+/* Chart Notes – Bases view theme-friendly tweaks */
+.chartnotes-bases-view,
+.chartnotes-bases-view * {
+  /* evita que temas escureçam demais o SVG */
+  color: var(--text-normal);
+  stroke: var(--text-normal);
+}
+
+.chartnotes-bases-view .prop-charts-axis text {
+  fill: var(--text-normal);
+  font-weight: 500;
+}
+
+.chartnotes-bases-view .prop-charts-grid line,
+.chartnotes-bases-view .prop-charts-grid path {
+  stroke: var(--background-modifier-border);
+  opacity: 0.6;
+}
+
+.chartnotes-bases-view .prop-charts-title {
+  fill: var(--text-accent);
+  font-weight: 600;
+}

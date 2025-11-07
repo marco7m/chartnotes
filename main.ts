@@ -142,6 +142,8 @@ export default class ChartNotesPlugin extends Plugin {
 		// -----------------------------------------------------------------
 		// Bases view (Obsidian 1.10+)
 		// -----------------------------------------------------------------
+
+
 		this.registerBasesView(CHARTNOTES_BASES_VIEW_TYPE, {
 			name: "Chart Notes",
 			icon: "lucide-chart-area",
@@ -150,9 +152,7 @@ export default class ChartNotesPlugin extends Plugin {
 				new ChartNotesBasesView(controller, containerEl, this.renderer),
 
 			options: () => {
-				// truque com `any` pra evitar erro de TS se o obsidian.d.ts ainda
-				// não tiver o campo `shouldHide` atualizado
-				const chartTypeOption: any = {
+				const chartType: any = {
 					type: "dropdown",
 					key: "chartType",
 					displayName: "Chart type",
@@ -168,112 +168,119 @@ export default class ChartNotesPlugin extends Plugin {
 					},
 				};
 
-				const xOption: any = {
+				const xProp: any = {
 					type: "property",
 					key: "xProperty",
-					displayName: "X axis / label",
+					displayName: "Category / X axis (slice label)",
 				};
 
-				const yOption: any = {
+				const yProp: any = {
 					type: "property",
 					key: "yProperty",
-					displayName: "Y axis / value (empty = count)",
+					displayName: "Value (Y) – empty = count",
 				};
 
-				const seriesOption: any = {
+				const seriesProp: any = {
 					type: "property",
 					key: "seriesProperty",
 					displayName: "Series / color (optional)",
+					// para Pie isso só confunde, então some da UI
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") === "pie",
 				};
 
-				// 🔢 modo de agregação
-				const aggregateModeOption: any = {
+				// 🔢 Modo de agregação (tamanho da barra/linha/fatia)
+				const aggMode: any = {
 					type: "dropdown",
 					key: "aggregateMode",
-					displayName: "Aggregation (Y)",
+					displayName: "Value aggregation (Y)",
 					default: "sum",
 					options: {
 						sum: "Sum",
 						count: "Count (ignore Y)",
-						"cumulative-sum": "Cumulative sum",
+						"cumulative-sum": "Cumulative (line/area only)",
 					},
 					shouldHide: (config: any) => {
 						const t = String(config.get("chartType") ?? "bar");
-						// agregação só faz sentido pra charts agregados
+						// scatter não agrega; gantt não usa Y
 						return t === "scatter" || t === "gantt";
 					},
 				};
 
-				// opções específicas de Gantt – escondidas se não for Gantt
-				const startOption: any = {
-					type: "property",
-					key: "startProperty",
-					displayName: "Start (Gantt)",
-					shouldHide: (config: any) =>
-						String(config.get("chartType") ?? "") !== "gantt",
+				// 🧭 Bucket de datas em X (mantém o cumulative correto)
+				const xBucket: any = {
+					type: "dropdown",
+					key: "xBucket",
+					displayName: "X bucketing (dates)",
+					default: "auto",
+					options: {
+						auto: "Auto (date → day)",
+						none: "None",
+						day: "Day",
+						week: "Week",
+						month: "Month",
+						quarter: "Quarter",
+						year: "Year",
+					},
+					shouldHide: (config: any) => {
+						const t = String(config.get("chartType") ?? "bar");
+						// pie/scatter/gantt: bucket de data geralmente não é o que se quer
+						return t === "pie" || t === "scatter" || t === "gantt";
+					},
 				};
 
-				const endOption: any = {
+				// ⚙️ Campos de Gantt, só aparecem em Gantt
+				const mkGantt = (key: string, label: string): any => ({
 					type: "property",
-					key: "endProperty",
-					displayName: "End (Gantt)",
+					key,
+					displayName: label,
 					shouldHide: (config: any) =>
 						String(config.get("chartType") ?? "") !== "gantt",
-				};
+				});
 
-				const dueOption: any = {
-					type: "property",
-					key: "dueProperty",
-					displayName: "Due (Gantt, optional)",
-					shouldHide: (config: any) =>
-						String(config.get("chartType") ?? "") !== "gantt",
-				};
+				const startPropG = mkGantt("startProperty", "Start (Gantt)");
+				const endPropG = mkGantt("endProperty", "End (Gantt)");
+				const duePropG = mkGantt("dueProperty", "Due (optional)");
+				const scheduledPropG = mkGantt("scheduledProperty", "Scheduled (optional)");
+				const durationPropG = mkGantt(
+					"durationProperty",
+					"Duration in minutes (optional)",
+				);
+				const groupPropG = mkGantt("groupProperty", "Group / lane (optional)");
 
-				const durationOption: any = {
-					type: "property",
-					key: "durationProperty",
-					displayName: "Duration in minutes (Gantt, optional)",
-					shouldHide: (config: any) =>
-						String(config.get("chartType") ?? "") !== "gantt",
-				};
-
-				const groupOption: any = {
-					type: "property",
-					key: "groupProperty",
-					displayName: "Group / lane (Gantt, optional)",
-					shouldHide: (config: any) =>
-						String(config.get("chartType") ?? "") !== "gantt",
-				};
-
-				const drilldownOption: any = {
+				const drilldown: any = {
 					type: "toggle",
 					key: "drilldown",
 					displayName: "Drilldown (click opens notes)",
 					default: true,
 				};
 
-				const titleOption: any = {
+				const title: any = {
 					type: "text",
 					key: "title",
 					displayName: "Title (optional)",
 				};
 
 				return [
-					chartTypeOption,
-					xOption,
-					yOption,
-					seriesOption,
-					aggregateModeOption,
-					startOption,
-					endOption,
-					dueOption,
-					durationOption,
-					groupOption,
-					drilldownOption,
-					titleOption,
+					chartType,
+					xProp,
+					yProp,
+					seriesProp,
+					aggMode,
+					xBucket,
+					startPropG,
+					endPropG,
+					duePropG,
+					scheduledPropG,
+					durationPropG,
+					groupPropG,
+					drilldown,
+					title,
 				];
 			},
 		});
+
+
 
 
 	}
