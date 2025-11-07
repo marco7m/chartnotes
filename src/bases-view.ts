@@ -24,7 +24,25 @@ type AllowedChartType = (typeof CHART_TYPES)[number];
 
 function normalizeChartType(raw: unknown): AllowedChartType {
   const t = String(raw ?? "bar").trim().toLowerCase();
-  return (CHART_TYPES.includes(t as AllowedChartType) ? t : "bar") as AllowedChartType;
+  return (CHART_TYPES.includes(t as AllowedChartType)
+    ? t
+    : "bar") as AllowedChartType;
+}
+
+// agregações possíveis pra Y
+const AGGREGATION_MODES = [
+  "sum",
+  "count",
+  "cumulative-sum",
+] as const;
+
+type AggregationMode = (typeof AGGREGATION_MODES)[number];
+
+function normalizeAggregationMode(raw: unknown): AggregationMode {
+  const t = String(raw ?? "sum").trim().toLowerCase();
+  return (AGGREGATION_MODES.includes(t as AggregationMode)
+    ? t
+    : "sum") as AggregationMode;
 }
 
 type SelectedProp = { id: string | null; name: string | null };
@@ -43,7 +61,6 @@ export class ChartNotesBasesView extends BasesView {
   ) {
     super(controller);
     this.renderer = renderer;
-
     this.rootEl = containerEl.createDiv("chartnotes-bases-view");
   }
 
@@ -65,6 +82,9 @@ export class ChartNotesBasesView extends BasesView {
     const rawType = (cfg?.get("chartType") as string | undefined) ?? "bar";
     const chartType = normalizeChartType(rawType);
 
+    const aggRaw = cfg?.get("aggregateMode");
+    const aggMode = normalizeAggregationMode(aggRaw);
+
     const xProp = this.getPropFromConfig("xProperty");
     const yProp = this.getPropFromConfig("yProperty");
     const seriesProp = this.getPropFromConfig("seriesProperty");
@@ -77,6 +97,7 @@ export class ChartNotesBasesView extends BasesView {
     const isGantt = chartType === "gantt";
     const isScatter = chartType === "scatter";
 
+    // validações básicas pra dar feedback claro
     if (!isGantt && !xProp.id) {
       this.rootEl.createDiv({
         cls: "prop-charts-empty",
@@ -102,6 +123,7 @@ export class ChartNotesBasesView extends BasesView {
     }
 
     let rows: QueryResultRow[];
+
     if (isGantt) {
       rows = this.buildRowsForGantt(
         grouped,
@@ -116,13 +138,19 @@ export class ChartNotesBasesView extends BasesView {
     } else if (isScatter) {
       rows = this.buildRowsForScatter(grouped, xProp, yProp, seriesProp);
     } else {
-      rows = this.buildRowsForAggregatedCharts(grouped, xProp, yProp, seriesProp);
+      rows = this.buildRowsForAggregatedCharts(
+        grouped,
+        xProp,
+        yProp,
+        seriesProp,
+        aggMode,
+      );
     }
 
     if (!rows.length) {
       this.rootEl.createDiv({
         cls: "prop-charts-empty",
-        text: "No rows to display (check X/Y properties).",
+        text: "No rows to display (check X/Y/aggregation).",
       });
       return;
     }
@@ -138,6 +166,7 @@ export class ChartNotesBasesView extends BasesView {
       due: dueProp,
       duration: durationProp,
       group: groupProp,
+      aggMode,
     });
 
     const titleRaw = (cfg?.get("title") as string | undefined) ?? "";
@@ -231,6 +260,18 @@ export class ChartNotesBasesView extends BasesView {
     return null;
   }
 
+  private compareX(a: any, b: any): number {
+    const da = this.parseDate(a != null ? String(a) : null);
+    const db = this.parseDate(b != null ? String(b) : null);
+    if (da && db) return da.getTime() - db.getTime();
+
+    const na = Number(a);
+    const nb = Number(b);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+
+    return String(a ?? "").localeCompare(String(b ?? ""));
+  }
+
   // ---------------------------------------------------------------------------
   // Builders de linhas
   // ---------------------------------------------------------------------------
@@ -240,8 +281,12 @@ export class ChartNotesBasesView extends BasesView {
     xProp: SelectedProp,
     yProp: SelectedProp,
     seriesProp: SelectedProp,
+    aggMode: AggregationMode,
   ): QueryResultRow[] {
     const byKey = new Map<string, QueryResultRow & { props: PropsMap }>();
+
+    const treatAsCount =
+      aggMode === "count" || (!yProp.id && aggMode !== "sum");
 
     for (const group of groups) {
       for (const entry of group.entries as any[]) {
@@ -251,14 +296,18 @@ export class ChartNotesBasesView extends BasesView {
           this.readValue(entry, xProp) ??
           (file?.name ? String(file.name) : String(file?.path ?? ""));
 
-        const yStr = this.readValue(entry, yProp);
-
         let yNum = 1;
-        if (yProp.id) {
+        let yStr: string | null = null;
+
+        if (!treatAsCount && yProp.id) {
+          yStr = this.readValue(entry, yProp);
           if (yStr == null) continue;
           const n = Number(yStr);
           if (Number.isNaN(n)) continue;
           yNum = n;
+        } else {
+          // count: sempre 1
+          yNum = 1;
         }
 
         const seriesStr = this.readValue(entry, seriesProp);
@@ -283,14 +332,52 @@ export class ChartNotesBasesView extends BasesView {
         if (file?.path) row.notes!.push(file.path);
 
         if (row.props && xProp.name) row.props[xProp.name] = xStr;
-        if (row.props && yProp.name && yStr != null)
-          row.props[yProp.name] = yNum;
-        if (row.props && seriesProp.name && seriesStr != null)
+        if (!treatAsCount && row.props && yProp.name && yStr != null) {
+          row.props[yProp.name] = row.y;
+        }
+        if (row.props && seriesProp.name && seriesStr != null) {
           row.props[seriesProp.name] = seriesStr;
+        }
       }
     }
 
-    return Array.from(byKey.values());
+    const rows = Array.from(byKey.values());
+
+    if (aggMode === "cumulative-sum") {
+      return this.toCumulative(rows);
+    }
+
+    return rows;
+  }
+
+  private toCumulative(rows: QueryResultRow[]): QueryResultRow[] {
+    const bySeries = new Map<string, QueryResultRow[]>();
+
+    for (const row of rows) {
+      const key = row.series ?? "__no_series__";
+      let list = bySeries.get(key);
+      if (!list) {
+        list = [];
+        bySeries.set(key, list);
+      }
+      list.push(row);
+    }
+
+    const result: QueryResultRow[] = [];
+
+    for (const [, list] of bySeries) {
+      const sorted = [...list].sort((a, b) => this.compareX(a.x, b.x));
+      let acc = 0;
+      for (const r of sorted) {
+        const yNum = Number(r.y ?? 0);
+        if (Number.isNaN(yNum)) continue;
+        acc += yNum;
+        r.y = acc;
+        result.push(r);
+      }
+    }
+
+    return result;
   }
 
   private buildRowsForScatter(
@@ -316,15 +403,13 @@ export class ChartNotesBasesView extends BasesView {
         const seriesStr = this.readValue(entry, seriesProp);
         const series = seriesStr != null ? String(seriesStr) : undefined;
 
-        const row: QueryResultRow = {
+        rows.push({
           x: xNum,
           y: yNum,
           series,
           notes: file?.path ? [file.path] : [],
           props: {},
-        };
-
-        rows.push(row);
+        });
       }
     }
 
@@ -384,7 +469,7 @@ export class ChartNotesBasesView extends BasesView {
           props[groupProp.name] = groupVal;
         }
 
-        const row: QueryResultRow = {
+        rows.push({
           x: label,
           y: 0,
           series,
@@ -393,9 +478,7 @@ export class ChartNotesBasesView extends BasesView {
           due: due ?? undefined,
           notes: file?.path ? [file.path] : [],
           props,
-        };
-
-        rows.push(row);
+        });
       }
     }
 
@@ -411,10 +494,17 @@ export class ChartNotesBasesView extends BasesView {
     due: SelectedProp;
     duration: SelectedProp;
     group: SelectedProp;
+    aggMode: AggregationMode;
   }): any {
+    // se estiver em modo "count" explícito, faz sentido chamar o eixo de "Count"
+    const yName =
+      fields.aggMode === "count"
+        ? "Count"
+        : fields.y.name ?? "y";
+
     return {
       x: fields.x.name ?? "x",
-      y: fields.y.name ?? "y",
+      y: yName,
       series: fields.series.name ?? "series",
       start: fields.start.name ?? "start",
       end: fields.end.name ?? "end",
