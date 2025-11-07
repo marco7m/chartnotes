@@ -325,3 +325,19 @@
   fill: var(--text-accent);
   font-weight: 600;
 }
+
+
+/* Gantt – legibilidade dos rótulos (projetos/lanes) */
+.chartnotes-bases-view svg text.lane-label,
+.prop-charts-gantt svg text.lane-label {
+  font-weight: 600;
+  font-style: normal;
+  letter-spacing: 0;
+  text-transform: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Contraste por tema */
+.theme-dark .chartnotes-bases-view svg text.lane-label { fill: var(--text-normal, #d1d1d1); opacity: .95; }
+.theme-light .chartnotes-bases-view svg text.lane-label { fill: var(--text-normal, #1f1f1f); opacity: .95; }

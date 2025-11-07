@@ -293,6 +293,107 @@ export class ChartNotesBasesView extends BasesView {
 		return x;
 	}
 
+  private makeLocalDate(d: Date): Date {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    x.setHours(0, 0, 0, 0);
+    return x;
+  }
+
+  private endOfDay(d: Date): Date {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+    return x;
+  }
+
+  // ISO puro (YYYY-MM-DD) como data local (00:00)
+  private parseISODateLocal(s: string): Date | null {
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    const x = new Date(y, mo, d);
+    x.setHours(0, 0, 0, 0);
+    return Number.isNaN(x.getTime()) ? null : x;
+  }
+
+  // Parser tolerante: Date | ISO | dd/mm/yyyy | mm/dd/yyyy | ISO com hora
+  private parseDateLoose(raw: any): Date | null {
+    if (raw instanceof Date) return this.makeLocalDate(raw);
+    if (raw == null) return null;
+
+    const s = String(raw).trim();
+    if (!s) return null;
+
+    // 1) ISO puro → local
+    const isoLocal = this.parseISODateLocal(s);
+    if (isoLocal) return isoLocal;
+
+    // 2) ISO com hora (Z ou offset) → usa JS e normaliza pra local-dia
+    if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+      const d = new Date(s);
+      if (!Number.isNaN(d.getTime())) return this.makeLocalDate(d);
+    }
+
+    // 3) dd/mm/yyyy ou mm/dd/yyyy → heurística
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      let d = Number(m[1]);
+      let mo = Number(m[2]);
+      const y = Number(m[3]);
+      // se primeiro > 12 → é dd/mm
+      if (d > 12) {
+        // já está dd/mm
+      } else {
+        // assume mm/dd → inverte
+        const tmp = d;
+        d = mo;
+        mo = tmp;
+      }
+      const x = new Date(y, mo - 1, d);
+      x.setHours(0, 0, 0, 0);
+      return Number.isNaN(x.getTime()) ? null : x;
+    }
+
+    // 4) Fallback: Date do JS e normaliza pra dia local
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : this.makeLocalDate(d);
+  }
+
+  // Lê uma property de data do Bases de forma segura
+  private readDate(entry: any, prop: { id: string | null }): Date | null {
+    if (!prop?.id) return null;
+    let v: any;
+    try {
+      v = entry.getValue(prop.id);
+    } catch {
+      return null;
+    }
+    if (v == null) return null;
+
+    // Alguns tipos do Bases/metadata podem expor toDate()/toISODate()
+    try {
+      if (typeof v.toDate === "function") {
+        const d = v.toDate();
+        if (d instanceof Date && !Number.isNaN(d.getTime())) return this.makeLocalDate(d);
+      }
+    } catch {}
+
+    try {
+      if (typeof v.toISODate === "function") {
+        const s = v.toISODate();
+        const d = this.parseISODateLocal(String(s));
+        if (d) return d;
+      }
+    } catch {}
+
+    if (v instanceof Date) return this.makeLocalDate(v);
+
+    try {
+      return this.parseDateLoose(v.toString());
+    } catch {
+      return null;
+    }
+  }
 	// Início do mês (dia 1 às 00:00)
 	private startOfMonth(d: Date): Date {
 		const x = new Date(d.getFullYear(), d.getMonth(), 1);
@@ -605,83 +706,103 @@ export class ChartNotesBasesView extends BasesView {
 		return rows;
 	}
 
-	private buildRowsForGantt(
-		groups: any[],
-		xProp: SelectedProp,
-		seriesProp: SelectedProp,
-		startProp: SelectedProp,
-		endProp: SelectedProp,
-		dueProp: SelectedProp,
-		scheduledProp: SelectedProp,
-		durationProp: SelectedProp,
-		groupProp: SelectedProp,
-	): QueryResultRow[] {
-		const rows: QueryResultRow[] = [];
 
-		for (const group of groups) {
-			for (const entry of group.entries as any[]) {
-				const file = entry.file;
+  private buildRowsForGantt(
+    groups: any[],
+    xProp: { id: string | null; name: string | null },
+    seriesProp: { id: string | null; name: string | null },
+    startProp: { id: string | null; name: string | null },
+    endProp: { id: string | null; name: string | null },
+    dueProp: { id: string | null; name: string | null },
+    scheduledProp: { id: string | null; name: string | null },
+    durationProp: { id: string | null; name: string | null },
+    groupProp: { id: string | null; name: string | null },
+  ): QueryResultRow[] {
+    const rows: QueryResultRow[] = [];
 
-				const startStr = this.readValue(entry, startProp);
-				const endStr = this.readValue(entry, endProp);
-				const dueStr = this.readValue(entry, dueProp);
-				const scheduledStr = this.readValue(entry, scheduledProp);
-				const durationStr = this.readValue(entry, durationProp);
+    for (const group of groups) {
+      for (const entry of group.entries as any[]) {
+        const file = entry.file;
 
-				const durationMin = durationStr != null ? Number(durationStr) : NaN;
-				const hasDuration = Number.isFinite(durationMin);
+        const start = this.readDate(entry, startProp);
+        const endRaw = this.readDate(entry, endProp);
+        const due = this.readDate(entry, dueProp);
+        const scheduled = this.readDate(entry, scheduledProp);
 
-				let start = this.parseDate(startStr);
-				let end = this.parseDate(endStr);
-				const due = this.parseDate(dueStr);
-				const scheduled = this.parseDate(scheduledStr);
+        const durationStr = this.readValue(entry, durationProp);
+        const durationMin = durationStr != null ? Number(durationStr) : NaN;
+        const hasDuration = Number.isFinite(durationMin);
 
-				if (!start && hasDuration) {
-					if (scheduled) {
-						start = new Date(scheduled.getTime() - durationMin * 60_000);
-					} else if (due) {
-						start = new Date(due.getTime() - durationMin * 60_000);
-					} else if (end) {
-						start = new Date(end.getTime() - durationMin * 60_000);
-					}
-				}
+        let s = start ? new Date(start) : null;
+        let e = endRaw ? new Date(endRaw) : null;
 
-				if (!end && start && hasDuration) {
-					end = new Date(start.getTime() + durationMin * 60_000);
-				}
+        // Regras de fallback:
+        // 1) se não há start mas há end e duração → start = end - duração
+        if (!s && e && hasDuration) {
+          s = new Date(e.getTime() - durationMin * 60_000);
+          s = this.makeLocalDate(s);
+        }
 
-				if (!start || !end) continue;
+        // 2) se não há end mas há start e duração → end = start + duração
+        if (s && !e && hasDuration) {
+          e = new Date(s.getTime() + durationMin * 60_000);
+        }
 
-				const label =
-					this.readValue(entry, xProp) ??
-						(file?.name
-							? String(file.name).replace(/\.md$/i, "")
-							: String(file?.path ?? ""));
+        // 3) se não há end/start mas há "scheduled" (tratado como fim) + duração
+        if (!s && !e && scheduled && hasDuration) {
+          e = new Date(scheduled);
+          s = new Date(e.getTime() - durationMin * 60_000);
+          s = this.makeLocalDate(s);
+        }
 
-				const seriesStr = this.readValue(entry, seriesProp);
-				const series = seriesStr != null ? String(seriesStr) : undefined;
+        // 4) se não há end/start mas há "due" + duração
+        if (!s && !e && due && hasDuration) {
+          e = new Date(due);
+          s = new Date(e.getTime() - durationMin * 60_000);
+          s = this.makeLocalDate(s);
+        }
 
-				const groupVal = this.readValue(entry, groupProp);
+        // 5) se só há start (sem duração nem end), não dá pra desenhar
+        if (!s || !e) continue;
 
-				const props: PropsMap = {};
-				if (hasDuration && durationProp.name) props[durationProp.name] = durationMin;
-				if (groupProp.name && groupVal != null) props[groupProp.name] = groupVal;
+        // Ajuste de “dia inteiro” para datas-calendário:
+        // se s e e são datas de dia (00:00), mostra o END como inclusivo (fim do dia)
+        const sIs00 = s.getHours() === 0 && s.getMinutes() === 0 && s.getSeconds() === 0;
+        const eIs00 = e.getHours() === 0 && e.getMinutes() === 0 && e.getSeconds() === 0;
+        if (sIs00 && eIs00) {
+          e = this.endOfDay(e);
+        }
 
-				rows.push({
-					x: label,
-					y: 0,
-					series,
-					start,
-					end,
-					due: due ?? undefined,
-					notes: file?.path ? [file.path] : [],
-					props,
-				});
-			}
-		}
+        // Label (nome da tarefa)
+        const label =
+          this.readValue(entry, xProp) ??
+          (file?.name ? String(file.name).replace(/\.md$/i, "") : String(file?.path ?? ""));
 
-		return rows;
-	}
+        const seriesStr = this.readValue(entry, seriesProp);
+        const series = seriesStr != null ? String(seriesStr) : undefined;
+
+        const groupVal = this.readValue(entry, groupProp);
+
+        const props: Record<string, any> = {};
+        if (hasDuration && durationProp.name) props[durationProp.name] = durationMin;
+        if (groupProp.name && groupVal != null) props[groupProp.name] = groupVal;
+
+        rows.push({
+          x: label,
+          y: 0,
+          series,
+          start: s,
+          end: e,
+          due: due ?? undefined,
+          notes: file?.path ? [file.path] : [],
+          props,
+        });
+      }
+    }
+
+    return rows;
+  }
+
 
 	private buildEncoding(fields: {
 		x: SelectedProp;
