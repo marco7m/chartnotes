@@ -545,35 +545,17 @@ export class ChartNotesBasesView extends BasesView {
     xBucket: XBucket;
     chartType: AllowedChartType;
   }): any {
-    const isCount =
-      fields.chartType === "pie" ||
-      fields.aggMode === "count" ||
-      (!fields.y.id && fields.aggMode !== "sum");
+    // IMPORTANTE:
+    // encoding.x / encoding.y precisam ser nomes de propriedades,
+    // não labels bonitinhos, senão o renderer passa a olhar para
+    // outras coisas (ex.: file.name) e o Pie vira "1 fatia por nota".
 
-    let yName: string;
-    if (fields.chartType === "pie") {
-      yName = "Count";
-    } else if (isCount) {
-      yName = "Count";
-    } else if (fields.aggMode === "cumulative-sum") {
-      yName = fields.y.name ? `${fields.y.name} (cumulative)` : "Cumulative";
-    } else {
-      yName = fields.y.name ? `${fields.y.name} (sum)` : "Value";
-    }
-
-    const useSuffix =
-      fields.chartType !== "pie" &&
-      fields.chartType !== "scatter" &&
-      fields.chartType !== "gantt";
-
-    const xSuffix =
-      useSuffix && fields.xBucket && fields.xBucket !== "none"
-        ? ` (${fields.xBucket})`
-        : "";
+    const xKey = fields.x.name ?? "x";
+    const yKey = fields.y.name ?? "y";
 
     return {
-      x: fields.x.name ? `${fields.x.name}${xSuffix}` : "x",
-      y: yName,
+      x: xKey,
+      y: yKey,
       series: fields.series.name ?? "series",
       start: fields.start.name ?? "start",
       end: fields.end.name ?? "end",
@@ -582,5 +564,6 @@ export class ChartNotesBasesView extends BasesView {
       group: fields.group.name ?? "group",
     };
   }
+
 }
 
