@@ -1,11 +1,12 @@
 {
-	"id": "chart-notes",
-	"name": "Chart Notes",
-	"version": "0.3.3",
-	"minAppVersion": "1.5.0",
-	"description": "Mostra gráficos (bar, line, area, pie, scatter, stacked-bar, table, gantt) a partir dos properties/YAML das notas.",
-	"author": "Marco Aurélio",
-	"authorUrl": "",
-	"fundingUrl": "",
-	"isDesktopOnly": false
+  "id": "chart-notes",
+  "name": "Chart Notes",
+  "version": "0.3.3",
+  "minAppVersion": "1.10.0",
+  "description": "Mostra gráficos (bar, line, area, pie, scatter, stacked-bar, table, gantt) a partir dos properties/YAML das notas.",
+  "author": "Marco Aurélio",
+  "authorUrl": "",
+  "fundingUrl": "",
+  "isDesktopOnly": false
 }
+
