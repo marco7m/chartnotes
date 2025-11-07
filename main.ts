@@ -142,7 +142,6 @@ export default class ChartNotesPlugin extends Plugin {
 		// -----------------------------------------------------------------
 		// Bases view (Obsidian 1.10+)
 		// -----------------------------------------------------------------
-
 		this.registerBasesView(CHARTNOTES_BASES_VIEW_TYPE, {
 			name: "Chart Notes",
 			icon: "lucide-chart-area",
@@ -275,6 +274,7 @@ export default class ChartNotesPlugin extends Plugin {
 				];
 			},
 		});
+
 
 	}
 

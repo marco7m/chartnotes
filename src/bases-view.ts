@@ -29,7 +29,7 @@ function normalizeChartType(raw: unknown): AllowedChartType {
     : "bar") as AllowedChartType;
 }
 
-// agregações possíveis pra Y
+// modos de agregação
 const AGGREGATION_MODES = [
   "sum",
   "count",
@@ -83,7 +83,15 @@ export class ChartNotesBasesView extends BasesView {
     const chartType = normalizeChartType(rawType);
 
     const aggRaw = cfg?.get("aggregateMode");
-    const aggMode = normalizeAggregationMode(aggRaw);
+    const aggModeConfig = normalizeAggregationMode(aggRaw);
+
+    // cumulative só faz sentido em line/area. Nos outros tratamos como sum
+    const allowCumulative =
+      chartType === "line" || chartType === "area";
+    const aggMode: AggregationMode =
+      aggModeConfig === "cumulative-sum" && !allowCumulative
+        ? "sum"
+        : aggModeConfig;
 
     const xProp = this.getPropFromConfig("xProperty");
     const yProp = this.getPropFromConfig("yProperty");
@@ -97,7 +105,7 @@ export class ChartNotesBasesView extends BasesView {
     const isGantt = chartType === "gantt";
     const isScatter = chartType === "scatter";
 
-    // validações básicas pra dar feedback claro
+    // feedbacks claros
     if (!isGantt && !xProp.id) {
       this.rootEl.createDiv({
         cls: "prop-charts-empty",
@@ -203,9 +211,19 @@ export class ChartNotesBasesView extends BasesView {
   private getPropFromConfig(key: string): SelectedProp {
     const cfg: any = (this as any).config;
     const raw = cfg?.get?.(key) as string | undefined;
-    const id = raw && raw.trim().length ? raw.trim() : null;
+    if (!raw) return { id: null, name: null };
 
-    if (!id) return { id: null, name: null };
+    const trimmed = raw.trim();
+    // se por algum motivo veio "undefined" ou "null" em string, trata como vazio
+    if (
+      !trimmed ||
+      trimmed === "undefined" ||
+      trimmed === "null"
+    ) {
+      return { id: null, name: null };
+    }
+
+    const id = trimmed;
 
     try {
       const parsed = parsePropertyId(
@@ -285,6 +303,7 @@ export class ChartNotesBasesView extends BasesView {
   ): QueryResultRow[] {
     const byKey = new Map<string, QueryResultRow & { props: PropsMap }>();
 
+    // se Y estiver vazio, "sum" vira "count" na prática
     const treatAsCount =
       aggMode === "count" || (!yProp.id && aggMode !== "sum");
 
@@ -496,11 +515,17 @@ export class ChartNotesBasesView extends BasesView {
     group: SelectedProp;
     aggMode: AggregationMode;
   }): any {
-    // se estiver em modo "count" explícito, faz sentido chamar o eixo de "Count"
-    const yName =
-      fields.aggMode === "count"
-        ? "Count"
-        : fields.y.name ?? "y";
+    let yName: string;
+
+    if (fields.aggMode === "count" || (!fields.y.id && fields.aggMode !== "sum")) {
+      // count explícito, ou sum sem Y definido
+      yName = "Count";
+    } else if (fields.aggMode === "cumulative-sum") {
+      yName = fields.y.name ? `${fields.y.name} (cumulative)` : "Cumulative";
+    } else {
+      // sum normal
+      yName = fields.y.name ? `${fields.y.name} (sum)` : "Value";
+    }
 
     return {
       x: fields.x.name ?? "x",
