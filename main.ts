@@ -195,17 +195,16 @@ export default class ChartNotesPlugin extends Plugin {
 				const aggMode: any = {
 					type: "dropdown",
 					key: "aggregateMode",
-					displayName: "Value aggregation (Y)",
-					default: "sum",
+					displayName: "Value mode",
+					default: "normal",
 					options: {
-						sum: "Sum",
-						count: "Count (ignore Y)",
+						normal: "Normal (sum / count)",
 						"cumulative-sum": "Cumulative (line/area only)",
 					},
-					// Pie, Scatter, Gantt não usam isso de forma útil
 					shouldHide: (config: any) => {
 						const t = String(config.get("chartType") ?? "bar");
-						return t === "pie" || t === "scatter" || t === "gantt";
+						// Só faz sentido pra line/area
+						return t !== "line" && t !== "area";
 					},
 				};
 
@@ -267,7 +266,6 @@ export default class ChartNotesPlugin extends Plugin {
 					yProp,
 					seriesProp,
 					aggMode,
-					xBucket,
 					startPropG,
 					endPropG,
 					duePropG,
