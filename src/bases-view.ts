@@ -10,24 +10,7 @@ import type { PropChartsRenderer, RenderContext } from "./renderer";
 
 export const CHARTNOTES_BASES_VIEW_TYPE = "chartnotes-view";
 
-type SelectedProp = {
-  id: string | null;
-  name: string | null;
-};
-
-type ChartNotesBasesSettings = {
-  chartType: string;
-  xProperty: string | null;
-  yProperty: string | null;
-  seriesProperty: string | null;
-  startProperty: string | null;
-  endProperty: string | null;
-  dueProperty: string | null;
-  durationProperty: string | null;
-  groupProperty: string | null;
-};
-
-const ALLOWED_CHART_TYPES = [
+const CHART_TYPES = [
   "bar",
   "stacked-bar",
   "line",
@@ -37,310 +20,132 @@ const ALLOWED_CHART_TYPES = [
   "gantt",
 ] as const;
 
-type AllowedChartType = (typeof ALLOWED_CHART_TYPES)[number];
+type AllowedChartType = (typeof CHART_TYPES)[number];
 
 function normalizeChartType(raw: unknown): AllowedChartType {
   const t = String(raw ?? "bar").trim().toLowerCase();
-  return (ALLOWED_CHART_TYPES.includes(t as AllowedChartType)
-    ? t
-    : "bar") as AllowedChartType;
+  return (CHART_TYPES.includes(t as AllowedChartType) ? t : "bar") as AllowedChartType;
 }
 
-type PropsRecord = Record<string, any>;
+type SelectedProp = { id: string | null; name: string | null };
+type PropsMap = Record<string, any>;
 
 export class ChartNotesBasesView extends BasesView {
   readonly type = CHARTNOTES_BASES_VIEW_TYPE;
 
-  private containerEl: HTMLElement;
-  private controlsEl: HTMLElement;
-  private chartEl: HTMLElement;
+  private rootEl: HTMLElement;
   private renderer: PropChartsRenderer;
-
-  private settings: ChartNotesBasesSettings = {
-    chartType: "bar",
-    xProperty: null,
-    yProperty: null,
-    seriesProperty: null,
-    startProperty: null,
-    endProperty: null,
-    dueProperty: null,
-    durationProperty: null,
-    groupProperty: null,
-  };
-
-  private groupedData: any[] = [];
 
   constructor(
     controller: QueryController,
-    parentEl: HTMLElement,
+    containerEl: HTMLElement,
     renderer: PropChartsRenderer,
   ) {
     super(controller);
     this.renderer = renderer;
 
-    // Usa diretamente o container da view do Bases
-    this.containerEl = parentEl;
-    this.containerEl.empty();
-    this.containerEl.addClass("chartnotes-bases-root");
-
-    this.controlsEl = this.containerEl.createDiv("chartnotes-bases-controls");
-    this.chartEl = this.containerEl.createDiv("chartnotes-bases-chart");
-
-    // Estilinho básico pra ficar claro que tem UI ali
-    const cs = this.controlsEl.style;
-    cs.display = "flex";
-    cs.flexWrap = "wrap";
-    cs.alignItems = "flex-end";
-    cs.gap = "8px";
-    cs.margin = "8px 0";
-    cs.padding = "6px 8px";
-    cs.borderBottom = "1px solid var(--background-modifier-border)";
-    cs.backgroundColor = "var(--background-secondary)";
-
-    const title = this.controlsEl.createDiv();
-    title.textContent = "Chart Notes – controles";
-    title.style.fontWeight = "bold";
-    title.style.marginRight = "12px";
+    this.rootEl = containerEl.createDiv("chartnotes-bases-view");
   }
 
-  // Chamado sempre que o Bases tiver novos dados
   public onDataUpdated(): void {
+    this.rootEl.empty();
+
     const data: any = (this as any).data;
-    this.groupedData = (data?.groupedData ?? []) as any[];
-
-    this.ensureDefaultsFromOrder();
-    this.buildControlsUI();
-    this.renderChart();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Defaults iniciais (x, y, série) com base nas propriedades disponíveis
-  // ---------------------------------------------------------------------------
-
-  private ensureDefaultsFromOrder(): void {
-    const cfg: any = (this as any).config;
-    const order = (cfg?.getOrder?.() as string[] | undefined) ?? [];
-    const allProps = ((this as any).allProperties as string[] | undefined) ?? [];
-
-    const list: string[] = [];
-    const seen = new Set<string>();
-
-    for (const id of order) {
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      list.push(id);
-    }
-
-    for (const id of allProps) {
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      list.push(id);
-    }
-
-    const pick = (i: number): string | null =>
-      i >= 0 && i < list.length ? list[i] : null;
-
-    if (!this.settings.xProperty) this.settings.xProperty = pick(0);
-    if (!this.settings.yProperty) this.settings.yProperty = pick(1);
-    if (!this.settings.seriesProperty) this.settings.seriesProperty = pick(2);
-  }
-
-  // ---------------------------------------------------------------------------
-  // UI interna (dropdowns etc.) – sem depender das options do Bases
-  // ---------------------------------------------------------------------------
-
-  private buildControlsUI(): void {
-    // Remover tudo exceto o título (primeiro filho)
-    const children = Array.from(this.controlsEl.children);
-    for (let i = 1; i < children.length; i++) {
-      children[i].remove();
-    }
-
-    const cfg: any = (this as any).config;
-
-    const order = (cfg?.getOrder?.() as string[] | undefined) ?? [];
-    const allProps = ((this as any).allProperties as string[] | undefined) ?? [];
-
-    // União de TODAS as propriedades disponíveis no dataset
-    const propIds: string[] = [];
-    const seen = new Set<string>();
-
-    for (const id of order) {
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      propIds.push(id);
-    }
-
-    for (const id of allProps) {
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      propIds.push(id);
-    }
-
-    const wrappers: Record<string, HTMLElement> = {};
-
-    const chartType = normalizeChartType(this.settings.chartType);
-
-    // Tipo do gráfico
-    const typeWrapper = this.controlsEl.createDiv("chartnotes-control");
-    wrappers["type"] = typeWrapper;
-
-    const typeLabel = typeWrapper.createEl("label");
-    typeLabel.textContent = "Tipo:";
-    typeLabel.style.marginRight = "4px";
-
-    const typeSelect = typeWrapper.createEl("select") as HTMLSelectElement;
-    for (const type of ALLOWED_CHART_TYPES) {
-      const opt = typeSelect.createEl("option");
-      opt.value = type;
-      opt.text = type;
-    }
-    typeSelect.value = chartType;
-
-    // Helper pra criar selects de propriedades
-    const makePropSelect = (
-      key: keyof ChartNotesBasesSettings,
-      labelText: string,
-      wrapperKey: string,
-    ) => {
-      const wrapper = this.controlsEl.createDiv("chartnotes-control");
-      wrappers[wrapperKey] = wrapper;
-
-      const label = wrapper.createEl("label");
-      label.textContent = labelText;
-      label.style.marginRight = "4px";
-
-      const select = wrapper.createEl("select") as HTMLSelectElement;
-
-      const emptyOpt = select.createEl("option");
-      emptyOpt.value = "";
-      emptyOpt.text = "(auto)";
-
-      for (const propId of propIds) {
-        let display = propId;
-
-        try {
-          if (cfg?.getDisplayName) {
-            const name = cfg.getDisplayName(propId);
-            if (name && typeof name === "string") {
-              display = name;
-            }
-          } else {
-            const parsed = parsePropertyId(
-              propId as
-                | `note.${string}`
-                | `file.${string}`
-                | `formula.${string}`,
-            );
-            const type = (parsed as any).type ?? "";
-            const name = (parsed as any).name ?? propId;
-            display = type ? `${name} (${type})` : name;
-          }
-        } catch {
-          // fallback fica como o id
-        }
-
-        const opt = select.createEl("option");
-        opt.value = propId;
-        opt.text = display;
-      }
-
-      const current = (this.settings[key] ?? "") as string | null;
-      if (current) select.value = current;
-
-      select.onchange = () => {
-        const value = select.value || null;
-        (this.settings as any)[key] = value;
-        this.renderChart();
-      };
-
-      return wrapper;
-    };
-
-    const xWrapper = makePropSelect("xProperty", "X:", "x");
-    const yWrapper = makePropSelect("yProperty", "Y:", "y");
-    const seriesWrapper = makePropSelect("seriesProperty", "Série:", "series");
-
-    const startWrapper = makePropSelect(
-      "startProperty",
-      "Início:",
-      "start",
-    );
-    const endWrapper = makePropSelect("endProperty", "Fim:", "end");
-    const dueWrapper = makePropSelect("dueProperty", "Due:", "due");
-    const durationWrapper = makePropSelect(
-      "durationProperty",
-      "Duração:",
-      "duration",
-    );
-    const groupWrapper = makePropSelect("groupProperty", "Grupo:", "group");
-
-    const updateVisibility = (t: AllowedChartType) => {
-      const isGantt = t === "gantt";
-
-      // X / Y / Série são relevantes pra todos os tipos por enquanto
-      xWrapper.style.display = "";
-      yWrapper.style.display = "";
-      seriesWrapper.style.display = "";
-
-      // Campos só de Gantt
-      startWrapper.style.display = isGantt ? "" : "none";
-      endWrapper.style.display = isGantt ? "" : "none";
-      dueWrapper.style.display = isGantt ? "" : "none";
-      durationWrapper.style.display = isGantt ? "" : "none";
-      groupWrapper.style.display = isGantt ? "" : "none";
-    };
-
-    updateVisibility(chartType);
-
-    typeSelect.onchange = () => {
-      const newType = normalizeChartType(typeSelect.value);
-      this.settings.chartType = newType;
-      updateVisibility(newType);
-      this.renderChart();
-    };
-  }
-
-  // ---------------------------------------------------------------------------
-  // Render do gráfico
-  // ---------------------------------------------------------------------------
-
-  private renderChart(): void {
-    this.chartEl.empty();
-
-    if (!this.groupedData || this.groupedData.length === 0) {
-      this.chartEl.createDiv({
+    const grouped = (data?.groupedData ?? []) as any[];
+    if (!grouped.length) {
+      this.rootEl.createDiv({
         cls: "prop-charts-empty",
-        text: "Sem dados (Base vazia ou sem resultados).",
+        text: "No data in this view.",
       });
       return;
     }
 
-    const chartType = normalizeChartType(this.settings.chartType);
+    const cfg: any = (this as any).config;
+
+    const rawType = (cfg?.get("chartType") as string | undefined) ?? "bar";
+    const chartType = normalizeChartType(rawType);
+
+    const xProp = this.getPropFromConfig("xProperty");
+    const yProp = this.getPropFromConfig("yProperty");
+    const seriesProp = this.getPropFromConfig("seriesProperty");
+    const startProp = this.getPropFromConfig("startProperty");
+    const endProp = this.getPropFromConfig("endProperty");
+    const dueProp = this.getPropFromConfig("dueProperty");
+    const durationProp = this.getPropFromConfig("durationProperty");
+    const groupProp = this.getPropFromConfig("groupProperty");
+
+    const isGantt = chartType === "gantt";
+    const isScatter = chartType === "scatter";
+
+    if (!isGantt && !xProp.id) {
+      this.rootEl.createDiv({
+        cls: "prop-charts-empty",
+        text: "Configure the 'X axis / label' property in view options.",
+      });
+      return;
+    }
+
+    if (isScatter && (!xProp.id || !yProp.id)) {
+      this.rootEl.createDiv({
+        cls: "prop-charts-empty",
+        text: "Scatter plots need both X and Y numeric properties.",
+      });
+      return;
+    }
+
+    if (isGantt && (!startProp.id || !endProp.id)) {
+      this.rootEl.createDiv({
+        cls: "prop-charts-empty",
+        text: "Gantt charts need Start and End properties configured.",
+      });
+      return;
+    }
 
     let rows: QueryResultRow[];
-
-    if (chartType === "gantt") {
-      rows = this.buildRowsForGantt(this.groupedData);
-    } else if (chartType === "scatter") {
-      rows = this.buildRowsForScatter(this.groupedData);
+    if (isGantt) {
+      rows = this.buildRowsForGantt(
+        grouped,
+        xProp,
+        seriesProp,
+        startProp,
+        endProp,
+        dueProp,
+        durationProp,
+        groupProp,
+      );
+    } else if (isScatter) {
+      rows = this.buildRowsForScatter(grouped, xProp, yProp, seriesProp);
     } else {
-      rows = this.buildRowsForAggregatedCharts(this.groupedData);
+      rows = this.buildRowsForAggregatedCharts(grouped, xProp, yProp, seriesProp);
     }
 
     if (!rows.length) {
-      this.chartEl.createDiv({
+      this.rootEl.createDiv({
         cls: "prop-charts-empty",
-        text: "Sem linhas para exibir (verifique as propriedades X/Y).",
+        text: "No rows to display (check X/Y properties).",
       });
       return;
     }
 
     const result: QueryResult = { rows };
-    const encoding = this.buildEncoding();
 
-    const cfg: any = (this as any).config;
-    const viewName: string = cfg?.name ?? "Chart Notes (Bases)";
+    const encoding = this.buildEncoding({
+      x: xProp,
+      y: yProp,
+      series: seriesProp,
+      start: startProp,
+      end: endProp,
+      due: dueProp,
+      duration: durationProp,
+      group: groupProp,
+    });
+
+    const titleRaw = (cfg?.get("title") as string | undefined) ?? "";
+    const title = titleRaw.trim() || cfg?.name || "Chart Notes (Bases)";
+
+    const drilldownCfg = cfg?.get("drilldown");
+    const drilldown =
+      typeof drilldownCfg === "boolean" ? drilldownCfg : true;
 
     const spec: ChartSpec = {
       type: chartType as any,
@@ -350,8 +155,8 @@ export class ChartNotesBasesView extends BasesView {
       } as any,
       encoding: encoding as any,
       options: {
-        title: viewName,
-        drilldown: true,
+        title,
+        drilldown,
       },
     };
 
@@ -359,18 +164,19 @@ export class ChartNotesBasesView extends BasesView {
       refresh: () => this.onDataUpdated(),
     };
 
-    this.renderer.render(this.chartEl, spec, result, ctx);
+    this.renderer.render(this.rootEl, spec, result, ctx);
   }
 
   // ---------------------------------------------------------------------------
   // Helpers de propriedades
   // ---------------------------------------------------------------------------
 
-  private getSelectedProp(field: keyof ChartNotesBasesSettings): SelectedProp {
-    const id = this.settings[field];
-    if (!id) {
-      return { id: null, name: null };
-    }
+  private getPropFromConfig(key: string): SelectedProp {
+    const cfg: any = (this as any).config;
+    const raw = cfg?.get?.(key) as string | undefined;
+    const id = raw && raw.trim().length ? raw.trim() : null;
+
+    if (!id) return { id: null, name: null };
 
     try {
       const parsed = parsePropertyId(
@@ -426,15 +232,16 @@ export class ChartNotesBasesView extends BasesView {
   }
 
   // ---------------------------------------------------------------------------
-  // Builders de linhas pra cada tipo
+  // Builders de linhas
   // ---------------------------------------------------------------------------
 
-  private buildRowsForAggregatedCharts(groups: any[]): QueryResultRow[] {
-    const xProp = this.getSelectedProp("xProperty");
-    const yProp = this.getSelectedProp("yProperty");
-    const seriesProp = this.getSelectedProp("seriesProperty");
-
-    const byKey = new Map<string, QueryResultRow & { props: PropsRecord }>();
+  private buildRowsForAggregatedCharts(
+    groups: any[],
+    xProp: SelectedProp,
+    yProp: SelectedProp,
+    seriesProp: SelectedProp,
+  ): QueryResultRow[] {
+    const byKey = new Map<string, QueryResultRow & { props: PropsMap }>();
 
     for (const group of groups) {
       for (const entry of group.entries as any[]) {
@@ -458,6 +265,7 @@ export class ChartNotesBasesView extends BasesView {
         const series = seriesStr != null ? String(seriesStr) : undefined;
 
         const key = `${xStr}@@${series ?? ""}`;
+
         let row = byKey.get(key);
         if (!row) {
           row = {
@@ -472,30 +280,25 @@ export class ChartNotesBasesView extends BasesView {
 
         row.y += yNum;
 
-        if (file?.path) {
-          row.notes!.push(file.path);
-        }
+        if (file?.path) row.notes!.push(file.path);
 
-        if (row.props && xProp.name) {
-          row.props[xProp.name] = xStr;
-        }
-        if (row.props && yProp.name && yStr != null) {
+        if (row.props && xProp.name) row.props[xProp.name] = xStr;
+        if (row.props && yProp.name && yStr != null)
           row.props[yProp.name] = yNum;
-        }
-        if (row.props && seriesProp.name && seriesStr != null) {
+        if (row.props && seriesProp.name && seriesStr != null)
           row.props[seriesProp.name] = seriesStr;
-        }
       }
     }
 
     return Array.from(byKey.values());
   }
 
-  private buildRowsForScatter(groups: any[]): QueryResultRow[] {
-    const xProp = this.getSelectedProp("xProperty");
-    const yProp = this.getSelectedProp("yProperty");
-    const seriesProp = this.getSelectedProp("seriesProperty");
-
+  private buildRowsForScatter(
+    groups: any[],
+    xProp: SelectedProp,
+    yProp: SelectedProp,
+    seriesProp: SelectedProp,
+  ): QueryResultRow[] {
     const rows: QueryResultRow[] = [];
 
     for (const group of groups) {
@@ -528,15 +331,16 @@ export class ChartNotesBasesView extends BasesView {
     return rows;
   }
 
-  private buildRowsForGantt(groups: any[]): QueryResultRow[] {
-    const xProp = this.getSelectedProp("xProperty");
-    const seriesProp = this.getSelectedProp("seriesProperty");
-    const startProp = this.getSelectedProp("startProperty");
-    const endProp = this.getSelectedProp("endProperty");
-    const dueProp = this.getSelectedProp("dueProperty");
-    const durationProp = this.getSelectedProp("durationProperty");
-    const groupProp = this.getSelectedProp("groupProperty");
-
+  private buildRowsForGantt(
+    groups: any[],
+    xProp: SelectedProp,
+    seriesProp: SelectedProp,
+    startProp: SelectedProp,
+    endProp: SelectedProp,
+    dueProp: SelectedProp,
+    durationProp: SelectedProp,
+    groupProp: SelectedProp,
+  ): QueryResultRow[] {
     const rows: QueryResultRow[] = [];
 
     for (const group of groups) {
@@ -572,7 +376,7 @@ export class ChartNotesBasesView extends BasesView {
 
         const groupVal = this.readValue(entry, groupProp);
 
-        const props: PropsRecord = {};
+        const props: PropsMap = {};
         if (durationProp.name && hasDuration) {
           props[durationProp.name] = durationMinutes;
         }
@@ -598,25 +402,25 @@ export class ChartNotesBasesView extends BasesView {
     return rows;
   }
 
-  private buildEncoding(): any {
-    const xProp = this.getSelectedProp("xProperty");
-    const yProp = this.getSelectedProp("yProperty");
-    const seriesProp = this.getSelectedProp("seriesProperty");
-    const startProp = this.getSelectedProp("startProperty");
-    const endProp = this.getSelectedProp("endProperty");
-    const dueProp = this.getSelectedProp("dueProperty");
-    const durationProp = this.getSelectedProp("durationProperty");
-    const groupProp = this.getSelectedProp("groupProperty");
-
+  private buildEncoding(fields: {
+    x: SelectedProp;
+    y: SelectedProp;
+    series: SelectedProp;
+    start: SelectedProp;
+    end: SelectedProp;
+    due: SelectedProp;
+    duration: SelectedProp;
+    group: SelectedProp;
+  }): any {
     return {
-      x: xProp.name ?? "x",
-      y: yProp.name ?? "y",
-      series: seriesProp.name ?? "series",
-      start: startProp.name ?? "start",
-      end: endProp.name ?? "end",
-      due: dueProp.name ?? "due",
-      duration: durationProp.name ?? "duration",
-      group: groupProp.name ?? "group",
+      x: fields.x.name ?? "x",
+      y: fields.y.name ?? "y",
+      series: fields.series.name ?? "series",
+      start: fields.start.name ?? "start",
+      end: fields.end.name ?? "end",
+      due: fields.due.name ?? "due",
+      duration: fields.duration.name ?? "duration",
+      group: fields.group.name ?? "group",
     };
   }
 }

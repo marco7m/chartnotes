@@ -1,4 +1,3 @@
-// main.ts
 import {
   App,
   MarkdownPostProcessorContext,
@@ -27,22 +26,21 @@ export default class ChartNotesPlugin extends Plugin {
   }
 
   async onload() {
-    console.log("loading Chart Notes plugin");
+    console.log("Chart Notes: loading plugin");
 
     // Indexador
     this.indexer = new PropChartsIndexer(this.app);
     await this.indexer.buildIndex();
 
-    // Engine de query
     this.query = new PropChartsQueryEngine(
       () => this.indexer.getAll(),
       [],
     );
 
-    // Renderer ÚNICO, compartilhado entre markdown e Bases
+    // Renderer ÚNICO (markdown + Bases)
     this.renderer = new PropChartsRenderer();
 
-    // Manter índice atualizado
+    // Atualização de índice
     this.registerEvent(
       this.app.vault.on("modify", async (file) => {
         if (file instanceof TFile) {
@@ -50,7 +48,6 @@ export default class ChartNotesPlugin extends Plugin {
         }
       }),
     );
-
     this.registerEvent(
       this.app.vault.on("create", async (file) => {
         if (file instanceof TFile) {
@@ -58,7 +55,6 @@ export default class ChartNotesPlugin extends Plugin {
         }
       }),
     );
-
     this.registerEvent(
       this.app.vault.on("delete", async (file) => {
         if (file instanceof TFile) {
@@ -95,7 +91,6 @@ export default class ChartNotesPlugin extends Plugin {
           return;
         }
 
-        // type é obrigatório
         if (!spec.type) {
           el.createEl("div", {
             text: "Chart Notes: 'type' obrigatório.",
@@ -103,7 +98,6 @@ export default class ChartNotesPlugin extends Plugin {
           return;
         }
 
-        // validação encoding por tipo
         const isGantt = spec.type === "gantt";
         const isTable = spec.type === "table";
         const needsXY = !isGantt && !isTable;
@@ -122,14 +116,12 @@ export default class ChartNotesPlugin extends Plugin {
           if (!spec.encoding.y && !isCount) {
             el.createEl("div", {
               text:
-                "Chart Notes: 'encoding.y' é obrigatório " +
-                "(exceto quando aggregate.y = 'count').",
+                "Chart Notes: 'encoding.y' é obrigatório (exceto quando aggregate.y = 'count').",
             });
             return;
           }
         }
 
-        // defaults
         if (!spec.encoding) spec.encoding = {};
         if (!spec.source) spec.source = {};
 
@@ -148,23 +140,92 @@ export default class ChartNotesPlugin extends Plugin {
     );
 
     // -----------------------------------------------------------------
-    // Bases view: Chart Notes
+    // Bases view (Obsidian 1.10+)
     // -----------------------------------------------------------------
     this.registerBasesView(CHARTNOTES_BASES_VIEW_TYPE, {
       name: "Chart Notes",
       icon: "lucide-chart-area",
 
-      // INJETANDO o renderer do plugin principal
+      // injetando o renderer do plugin principal
       factory: (controller, containerEl) =>
         new ChartNotesBasesView(controller, containerEl, this.renderer),
 
-      // Nada de `options` por enquanto – a própria view monta a UI
-      // com HTML/DOM e grava em config quando a API permitir.
+      // View options oficiais do Bases 1.10
+      options: () => [
+        {
+          type: "dropdown",
+          key: "chartType",
+          displayName: "Chart type",
+          default: "bar",
+          options: {
+            bar: "Bar",
+            "stacked-bar": "Stacked bar",
+            line: "Line",
+            area: "Area",
+            pie: "Pie",
+            scatter: "Scatter",
+            gantt: "Gantt",
+          },
+        },
+        {
+          type: "property",
+          key: "xProperty",
+          displayName: "X axis / label",
+        },
+        {
+          type: "property",
+          key: "yProperty",
+          displayName: "Y axis / value (empty = count)",
+        },
+        {
+          type: "property",
+          key: "seriesProperty",
+          displayName: "Series / color (optional)",
+        },
+        // Gantt específicos
+        {
+          type: "property",
+          key: "startProperty",
+          displayName: "Start (Gantt)",
+        },
+        {
+          type: "property",
+          key: "endProperty",
+          displayName: "End (Gantt)",
+        },
+        {
+          type: "property",
+          key: "dueProperty",
+          displayName: "Due (Gantt, optional)",
+        },
+        {
+          type: "property",
+          key: "durationProperty",
+          displayName: "Duration in minutes (Gantt, optional)",
+        },
+        {
+          type: "property",
+          key: "groupProperty",
+          displayName: "Group / lane (Gantt, optional)",
+        },
+        // Gerais
+        {
+          type: "toggle",
+          key: "drilldown",
+          displayName: "Drilldown (click opens notes)",
+          default: true,
+        },
+        {
+          type: "text",
+          key: "title",
+          displayName: "Title (optional)",
+        },
+      ],
     });
   }
 
   onunload() {
-    console.log("unloading Chart Notes plugin");
+    console.log("Chart Notes: unloading plugin");
   }
 }
 
