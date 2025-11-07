@@ -1,370 +1,359 @@
 // src/bases-view.ts
-import { BasesView } from "obsidian";
-import { PropChartsRenderer } from "./renderer";
+import {
+	BasesView,
+	QueryController,
+	BasesQueryResult,
+	HoverParent,
+	HoverPopover,
+	Plugin,
+} from "obsidian";
+
 import type { ChartSpec, QueryResult, QueryResultRow } from "./types";
+import { PropChartsRenderer } from "./renderer";
 
-export const CHARTNOTES_BASES_VIEW_TYPE = "chartnotes-view";
+// ID da view no Bases
+export const ChartNotesBasesViewType = "chartnotes-view";
 
-export class ChartNotesBasesView extends BasesView {
-	readonly type = CHARTNOTES_BASES_VIEW_TYPE;
+type ConfigKey =
+	| "chartType"
+	| "xProp"
+	| "yProp"
+	| "seriesProp"
+	| "title"
+	| "background"
+	| "cumulative"
+	| "rolling";
+
+export class ChartNotesBasesView extends BasesView implements HoverParent {
+	readonly type = ChartNotesBasesViewType;
+
+	// exigido pelo HoverParent
+	hoverPopover: HoverPopover | null = null;
 
 	private containerEl: HTMLElement;
 	private renderer: PropChartsRenderer;
 
-	constructor(controller: any, parentEl: HTMLElement) {
-		super(controller as any);
-		this.containerEl = parentEl.createDiv({
-			cls: "chart-notes-bases-view",
-		});
+	constructor(controller: QueryController, parentEl: HTMLElement) {
+		super(controller);
+		this.containerEl = parentEl.createDiv("chartnotes-bases-view-container");
 		this.renderer = new PropChartsRenderer();
 	}
 
+	// -----------------------------------------------------------------------
+	// Helpers de config
+	// -----------------------------------------------------------------------
+
+	private getConfigString(key: ConfigKey): string {
+		const v = this.config.get(key);
+		if (v == null) return "";
+		return String(v).trim();
+	}
+
+	private getConfigBool(key: ConfigKey): boolean {
+		const v = this.config.get(key);
+		if (v == null) return false;
+		if (typeof v === "boolean") return v;
+		const s = String(v).toLowerCase();
+		return s === "true" || s === "1" || s === "yes" || s === "on";
+	}
+
+	// -----------------------------------------------------------------------
+	// Bases hook
+	// -----------------------------------------------------------------------
+
 	public onDataUpdated(): void {
-		const container = this.containerEl;
-		container.empty();
+		this.containerEl.empty();
 
-		const dataAny: any = this.data;
-		const groups: any[] = dataAny?.groupedData ?? [];
-
-		if (!groups.length) {
-			container.createDiv({
+		const data = this.data as BasesQueryResult;
+		if (!data || !data.groupedData?.length) {
+			this.containerEl.createDiv({
+				text: "Chart Notes (Bases): nenhuma nota neste Base.",
 				cls: "prop-charts-empty",
-				text:
-					"Chart Notes (Bases): nenhum arquivo corresponde ao filtro atual.",
 			});
 			return;
 		}
 
-		// Opções da view do Bases
-		const chartTypeRaw =
-			(this.config.get("chartType") as string | undefined) ?? "bar";
-		const chartType = (chartTypeRaw || "bar").trim() || "bar";
+		const chartType = this.getConfigString("chartType") || "bar";
+		const xProp = this.getConfigString("xProp");
+		const yProp = this.getConfigString("yProp");
+		const seriesProp = this.getConfigString("seriesProp");
+		const title =
+			this.getConfigString("title") ||
+			this.config.name ||
+			"Chart Notes (Bases)";
+		const background =
+			this.getConfigString("background") || "var(--background-primary)";
+		const cumulative = this.getConfigBool("cumulative");
+		const rolling = this.getConfigString("rolling");
 
-		const xPropId =
-			(this.config.get("xProperty") as string | undefined)?.trim() ?? "";
-		const yPropId =
-			(this.config.get("yProperty") as string | undefined)?.trim() ?? "";
-		const seriesPropId =
-			(this.config.get("seriesProperty") as string | undefined)?.trim() ??
-			"";
-
-		const startPropId =
-			(this.config.get("startProperty") as string | undefined)?.trim() ??
-			"";
-		const endPropId =
-			(this.config.get("endProperty") as string | undefined)?.trim() ?? "";
-		const duePropId =
-			(this.config.get("dueProperty") as string | undefined)?.trim() ?? "";
-		const durationPropId =
-			(this.config.get("durationProperty") as string | undefined)?.trim() ??
-			"";
-		const groupPropId =
-			(this.config.get("groupProperty") as string | undefined)?.trim() ??
-			"";
-
-		// Achata todos os grupos em uma lista de entries
-		const entries: any[] = [];
-		for (const group of groups) {
-			for (const entry of group.entries as any[]) {
-				entries.push(entry);
-			}
-		}
-
-		let rows: QueryResultRow[] = [];
-
-		if (chartType === "gantt") {
-			rows = this.buildGanttRows(
-				entries,
-				startPropId,
-				endPropId,
-				duePropId,
-				durationPropId,
-				groupPropId
-			);
-		} else if (chartType === "scatter") {
-			rows = this.buildScatterRows(
-				entries,
-				xPropId,
-				yPropId,
-				seriesPropId
-			);
-		} else {
-			// bar, line, area, pie, stacked-bar
-			rows = this.buildStandardRows(
-				entries,
-				xPropId,
-				yPropId,
-				seriesPropId
-			);
-		}
-
-		if (!rows.length) {
-			container.createDiv({
+		// precisa pelo menos do X
+		if (!xProp) {
+			const info = this.containerEl.createDiv({
 				cls: "prop-charts-empty",
-				text:
-					"Chart Notes: não há dados para esse tipo de gráfico / propriedades escolhidas.",
+			});
+			info.createDiv({
+				text: "Chart Notes (Bases): configure a view nas opções:",
+			});
+			const ul = info.createEl("ul");
+			ul.createEl("li", {
+				text: 'Escolha "Chart type" (ex: bar, line, area, pie, scatter, stacked-bar).',
+			});
+			ul.createEl("li", {
+				text: 'Defina "X property" (ex: file.name, note.status, note.scheduled).',
+			});
+			ul.createEl("li", {
+				text: 'Opcional: "Y property" (numérico) e "Series property" (cores/legenda).',
+			});
+			return;
+		}
+
+		const queryResult = this.buildQueryResultFromBases(
+			data,
+			xProp,
+			yProp,
+			seriesProp
+		);
+
+		if (!queryResult.rows.length) {
+			this.containerEl.createDiv({
+				cls: "prop-charts-empty",
+				text: "Chart Notes (Bases): nenhum dado válido para o gráfico.",
 			});
 			return;
 		}
 
 		const spec: ChartSpec = {
-			type: chartType as any,
-			source: {},
+			type: chartType as ChartSpec["type"],
+			source: { paths: [] },
 			encoding: {},
-			options: {
-				title: this.config.name || "Chart Notes (Bases)",
-				// se no futuro o Gantt respeitar options.editable,
-				// aqui já deixamos false pra view do Bases
-				...(chartType === "gantt" ? { editable: false } : {}),
-			} as any,
 			aggregate: {},
+			sort: {},
+			options: {
+				title,
+				background,
+			},
 		};
 
-		// Y vazio em gráficos agregados = count
-		if (!yPropId && chartType !== "gantt" && chartType !== "scatter") {
-			(spec.aggregate as any).y = "count";
+		// pós-processamento simples pra line/area
+		if (
+			(chartType === "line" || chartType === "area") &&
+			(cumulative || rolling)
+		) {
+			this.applyPostAggregations(queryResult, { cumulative, rolling });
 		}
 
-		if (chartType === "gantt") {
-			spec.encoding = {
-				start: this.stripPrefix(startPropId),
-				end: this.stripPrefix(endPropId),
-				due: this.stripPrefix(duePropId),
-				duration: this.stripPrefix(durationPropId),
-				group: this.stripPrefix(groupPropId),
-				label: this.stripPrefix(xPropId),
-				series: this.stripPrefix(groupPropId),
-			} as any;
-		}
-
-		const result: QueryResult = { rows };
-
-		this.renderer.render(container, spec, result);
+		this.renderer.render(this.containerEl, spec, queryResult);
 	}
 
 	// -----------------------------------------------------------------------
-	// Helpers
+	// Conversão Bases -> QueryResult
 	// -----------------------------------------------------------------------
 
-	private stripPrefix(id: string): string | undefined {
-		if (!id) return undefined;
-		const dot = id.indexOf(".");
-		return dot >= 0 ? id.slice(dot + 1) : id;
-	}
-
-	private buildStandardRows(
-		entries: any[],
+	private buildQueryResultFromBases(
+		data: BasesQueryResult,
 		xPropId: string,
 		yPropId: string,
 		seriesPropId: string
-	): QueryResultRow[] {
-		// bucket.x agora é string (compatível com QueryResultRow.x)
-		const agg = new Map<
-			string,
-			{
-				x: string;
-				series?: string;
-				sumY: number;
-				count: number;
-				notes: string[];
-			}
-		>();
+	): QueryResult {
+		const rows: QueryResultRow[] = [];
 
-		for (const entry of entries) {
-			const file = (entry as any).file;
-			const fileName: string = file?.name ?? "";
-			const filePath: string = file?.path ?? "";
+		for (const group of data.groupedData) {
+			for (const entry of group.entries) {
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const e: any = entry;
 
-			// X: propriedade configurada ou nome da nota
-			let xVal: string;
-			if (xPropId) {
-				const v: any = entry.getValue(xPropId);
-				const s = v?.toString?.();
-				if (!s) continue;
-				xVal = s;
-			} else {
-				xVal = fileName;
-			}
+				const xVal = e.getValue ? e.getValue(xPropId) : null;
+				if (!xVal || xVal.isEmpty?.()) continue;
+				const xPrimitive = this.toPrimitive(xVal);
 
-			// Série opcional
-			let series: string | undefined;
-			if (seriesPropId) {
-				const v: any = entry.getValue(seriesPropId);
-				const s = v?.toString?.();
-				if (s) series = s;
-			}
+				let yVal = 1;
+				if (yPropId) {
+					const yRaw = e.getValue ? e.getValue(yPropId) : null;
+					if (!yRaw || yRaw.isEmpty?.()) continue;
+					const n = this.toNumber(yRaw);
+					if (n == null) continue;
+					yVal = n;
+				}
 
-			// Y:
-			// - se yProperty vazio => 1 (count)
-			// - se yProperty setado => soma dos valores numéricos
-			let yNumber = 1;
-			if (yPropId) {
-				const v: any = entry.getValue(yPropId);
-				const raw = v?.value ?? v?.toString?.();
-				const n = Number(raw);
-				if (!Number.isFinite(n)) continue;
-				yNumber = n;
-			}
+				let series: string | undefined;
+				if (seriesPropId) {
+					const sRaw = e.getValue ? e.getValue(seriesPropId) : null;
+					if (sRaw && !sRaw.isEmpty?.()) {
+						series = String(this.toPrimitive(sRaw));
+					}
+				}
 
-			const key = `${xVal}||${series ?? ""}`;
-			let bucket = agg.get(key);
-			if (!bucket) {
-				bucket = {
-					x: xVal,
+				const file = e.file;
+				const notePath: string = file?.path ?? "";
+				const noteName: string = file?.name ?? notePath;
+
+				const row: QueryResultRow = {
+					x: xPrimitive,
+					y: yVal,
 					series,
-					sumY: 0,
-					count: 0,
-					notes: [],
+					notes: notePath ? [notePath] : [],
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					props: { __fromBases: true, noteName } as any,
 				};
-				agg.set(key, bucket);
+
+				rows.push(row);
 			}
-			bucket.sumY += yNumber;
-			bucket.count += 1;
-			if (filePath) bucket.notes.push(filePath);
 		}
 
-		const rows: QueryResultRow[] = [];
-		for (const bucket of agg.values()) {
-			const y = yPropId ? bucket.sumY : bucket.count;
-			rows.push({
-				x: bucket.x, // string -> ok para QueryResultRow.x
-				y,
-				series: bucket.series,
-				notes: bucket.notes,
-			});
-		}
-
-		// ordena por X (string)
-		rows.sort((a, b) => String(a.x).localeCompare(String(b.x)));
-		return rows;
+		return { rows };
 	}
 
-	private buildScatterRows(
-		entries: any[],
-		xPropId: string,
-		yPropId: string,
-		seriesPropId: string
-	): QueryResultRow[] {
-		if (!xPropId || !yPropId) return [];
-
-		const rows: QueryResultRow[] = [];
-
-		for (const entry of entries) {
-			const file = (entry as any).file;
-			const filePath: string = file?.path ?? "";
-
-			const vx: any = entry.getValue(xPropId);
-			const vy: any = entry.getValue(yPropId);
-
-			const sx = vx?.toString?.();
-			const syRaw = vy?.value ?? vy?.toString?.();
-			const yNum = Number(syRaw);
-
-			if (!sx || !Number.isFinite(yNum)) continue;
-
-			let series: string | undefined;
-			if (seriesPropId) {
-				const vs: any = entry.getValue(seriesPropId);
-				const ss = vs?.toString?.();
-				if (ss) series = ss;
-			}
-
-			rows.push({
-				x: sx,
-				y: yNum,
-				series,
-				notes: filePath ? [filePath] : [],
-			});
+	private toPrimitive(v: unknown): string | number | Date {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const anyV: any = v;
+		if (anyV?.valueOf) {
+			const vv = anyV.valueOf();
+			if (vv instanceof Date) return vv;
+			if (typeof vv === "number") return vv;
+			if (typeof vv === "string") return vv;
 		}
-
-		return rows;
+		if (v instanceof Date) return v;
+		if (typeof v === "number") return v;
+		if (typeof v === "string") return v;
+		return String(v);
 	}
 
-	private buildGanttRows(
-		entries: any[],
-		startPropId: string,
-		endPropId: string,
-		duePropId: string,
-		durationPropId: string,
-		groupPropId: string
-	): QueryResultRow[] {
-		if (!startPropId && !endPropId) return [];
+	private toNumber(v: unknown): number | null {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const anyV: any = v;
+		if (anyV?.isEmpty?.()) return null;
 
-		const rows: QueryResultRow[] = [];
+		let raw: unknown = v;
+		if (anyV?.valueOf) raw = anyV.valueOf();
 
-		for (const entry of entries) {
-			const file = (entry as any).file;
-			const fileName: string = file?.name ?? "";
-			const filePath: string = file?.path ?? "";
+		if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+		const n = Number(raw as any);
+		return Number.isFinite(n) ? n : null;
+	}
 
-			const vStart: any = startPropId ? entry.getValue(startPropId) : null;
-			const vEnd: any = endPropId ? entry.getValue(endPropId) : null;
-			const vDue: any = duePropId ? entry.getValue(duePropId) : null;
+	// -----------------------------------------------------------------------
+	// Pós-agregações (cumulativo / rolling)
+	// -----------------------------------------------------------------------
 
-			const startDate = this.toDate(vStart);
-			const endDate = this.toDate(vEnd) ?? startDate;
-			const dueDate = this.toDate(vDue);
+	private applyPostAggregations(
+		result: QueryResult,
+		opts: { cumulative: boolean; rolling: string }
+	) {
+		const rows = [...(result.rows ?? [])];
+		if (!rows.length) return;
 
-			if (!startDate || !endDate) continue;
-
-			let group: string | undefined;
-			if (groupPropId) {
-				const vg: any = entry.getValue(groupPropId);
-				const sg = vg?.toString?.();
-				if (sg) group = sg;
-			}
-
-			// duração opcional; o Gantt calcula fallback usando o intervalo
-			let durationMinutes: number | undefined;
-			if (durationPropId) {
-				const vd: any = entry.getValue(durationPropId);
-				const raw = vd?.value ?? vd?.toString?.();
-				const n = Number(raw);
-				if (Number.isFinite(n)) durationMinutes = n;
-			}
-
-			const row: QueryResultRow = {
-				x: fileName,
-				y: 1,
-				start: startDate,
-				end: endDate,
-				series: group,
-				notes: filePath ? [filePath] : [],
-			};
-
-			// props usados pelo renderer do Gantt (tooltip / estimate)
-			const props: Record<string, unknown> = {};
-			if (durationMinutes != null && durationPropId) {
-				const key = this.stripPrefix(durationPropId) ?? "duration";
-				props[key] = durationMinutes;
-			}
-			if (Object.keys(props).length) {
-				(row as any).props = props;
-			}
-			if (dueDate) {
-				(row as any).due = dueDate;
-			}
-
-			rows.push(row);
-		}
-
-		// ordena por início
+		// ordena por X
 		rows.sort((a, b) => {
-			const ta = (a.start as Date).getTime();
-			const tb = (b.start as Date).getTime();
-			return ta - tb;
+			const ax =
+				a.x instanceof Date
+					? a.x.getTime()
+					: typeof a.x === "number"
+					? a.x
+					: String(a.x);
+			const bx =
+				b.x instanceof Date
+					? b.x.getTime()
+					: typeof b.x === "number"
+					? b.x
+					: String(b.x);
+
+			const sa = String(ax);
+			const sb = String(bx);
+			if (sa < sb) return -1;
+			if (sa > sb) return 1;
+			return 0;
 		});
 
-		return rows;
-	}
+		if (opts.cumulative) {
+			let acc = 0;
+			for (const r of rows) {
+				acc += r.y;
+				r.y = acc;
+			}
+		}
 
-	private toDate(v: any): Date | null {
-		if (!v) return null;
-		const s = v.toString?.();
-		if (!s) return null;
-		const d = new Date(s);
-		if (isNaN(d.getTime())) return null;
-		return d;
+		const win = parseInt(opts.rolling, 10);
+		if (!Number.isNaN(win) && win > 1) {
+			const buf: number[] = [];
+			for (const r of rows) {
+				buf.push(r.y);
+				if (buf.length > win) buf.shift();
+				const sum = buf.reduce((a, b) => a + b, 0);
+				r.y = sum / buf.length;
+			}
+		}
+
+		result.rows = rows;
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Função helper para registrar a view a partir do main.ts
+// ---------------------------------------------------------------------------
+
+export function registerChartNotesBasesView(plugin: Plugin): void {
+	plugin.registerBasesView(ChartNotesBasesViewType, {
+		name: "Chart Notes",
+		icon: "lucide-line-chart",
+		factory: (controller: QueryController, containerEl: HTMLElement) =>
+			new ChartNotesBasesView(controller, containerEl),
+		// Opções que aparecem na UI do Bases
+		options: () =>
+			[
+				{
+					type: "text",
+					displayName:
+						"Chart type (bar, line, area, pie, scatter, stacked-bar)",
+					key: "chartType",
+					default: "bar",
+				},
+				{
+					type: "text",
+					displayName:
+						"X property (ex: file.name, note.status, note.scheduled)",
+					key: "xProp",
+					default: "file.name",
+				},
+				{
+					type: "text",
+					displayName:
+						"Y property (numérico, ex: note.timeEstimate). vazio = conta linhas",
+					key: "yProp",
+					default: "",
+				},
+				{
+					type: "text",
+					displayName:
+						"Series property (cores/legenda, ex: note.status ou note.priority)",
+					key: "seriesProp",
+					default: "",
+				},
+				{
+					type: "text",
+					displayName: "Título do gráfico",
+					key: "title",
+					default: "",
+				},
+				{
+					type: "text",
+					displayName: "Cor de fundo (hex ou CSS var)",
+					key: "background",
+					default: "var(--background-primary)",
+				},
+				{
+					type: "toggle",
+					displayName: "Linha cumulativa (apenas line/area)",
+					key: "cumulative",
+					default: false,
+				},
+				{
+					type: "text",
+					displayName:
+						"Rolling window (apenas line/area, em número de pontos. ex: 7)",
+					key: "rolling",
+					default: "",
+				},
+			] as any,
+	});
 }
 
