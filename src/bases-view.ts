@@ -425,7 +425,6 @@ export class ChartNotesBasesView extends BasesView {
   }
 
   // ---------- builders ----------
-
   private buildRowsForAggregatedCharts(
     groups: any[],
     xProp: SelectedProp,
@@ -437,13 +436,23 @@ export class ChartNotesBasesView extends BasesView {
   ): QueryResultRow[] {
     const byKey = new Map<string, QueryResultRow & { props: PropsMap }>();
 
+    // Quando forceCount = true (Pie) ou aggMode = "count", a ideia é:
+    // - a gente mesmo conta as notas por categoria
+    // - e precisa expor ESSA contagem como uma "property" Y que o renderer entende.
     const treatAsCount =
       forceCount || aggMode === "count" || (!yProp.id && aggMode !== "sum");
+
+    // Nome da "property" que vai guardar o valor de Y.
+    // Se o usuário escolheu um Y explícito, usamos esse nome.
+    // Se não, usamos "y" (synthetic).
+    const yPropName = yProp.name || "y";
 
     for (const group of groups) {
       for (const entry of group.entries as any[]) {
         const file = entry.file;
 
+        // Para Pie (forceCount = true) usamos multi = true, o que permite
+        // explodir coisas como "file tags" em vários valores.
         const xValues = this.getXValuesForEntry(
           entry,
           xProp,
@@ -455,12 +464,14 @@ export class ChartNotesBasesView extends BasesView {
         let yStr: string | null = null;
 
         if (!treatAsCount && yProp.id) {
+          // Modo "sum" ou "cumulative-sum": somar valor numérico de Y
           yStr = this.readValue(entry, yProp);
           if (yStr == null) continue;
           const n = Number(yStr);
           if (Number.isNaN(n)) continue;
           baseYNum = n;
         } else {
+          // Modo "count": cada nota contribui com +1
           baseYNum = 1;
         }
 
@@ -476,14 +487,29 @@ export class ChartNotesBasesView extends BasesView {
             byKey.set(key, row);
           }
 
+          // Acumula o valor agregado
           row.y += baseYNum;
 
+          // Guarda todas as notas daquele bucket (pra drilldown)
           if (file?.path) row.notes!.push(file.path);
 
-          if (row.props && xProp.name) row.props[xProp.name] = xStr;
-          if (!treatAsCount && row.props && yProp.name && yStr != null) {
-            row.props[yProp.name] = row.y;
+          // Preenche props para o renderer "modo properties"
+          if (row.props && xProp.name) {
+            row.props[xProp.name] = xStr;
           }
+
+          // Se NÃO é count, Y é uma métrica numérica escolhida pelo usuário:
+          // gravamos o valor acumulado nessa property (ex.: "timeEstimate").
+          if (!treatAsCount && row.props && yPropName && yStr != null) {
+            row.props[yPropName] = row.y;
+          }
+
+          // Se é count (Pie, barras de contagem, etc.), expõe a CONTAGEM como property "y" (ou nome custom),
+          // pra que o renderer some isso em vez de contar linhas novamente.
+          if (treatAsCount && row.props) {
+            row.props[yPropName] = row.y;
+          }
+
           if (row.props && seriesProp.name && seriesStr != null) {
             row.props[seriesProp.name] = seriesStr;
           }
@@ -492,9 +518,14 @@ export class ChartNotesBasesView extends BasesView {
     }
 
     const rows = Array.from(byKey.values());
-    if (aggMode === "cumulative-sum") return this.toCumulative(rows);
+
+    if (aggMode === "cumulative-sum") {
+      return this.toCumulative(rows);
+    }
+
     return rows;
   }
+
 
   private toCumulative(rows: QueryResultRow[]): QueryResultRow[] {
     const bySeries = new Map<string, QueryResultRow[]>();

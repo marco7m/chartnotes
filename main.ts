@@ -170,7 +170,8 @@ export default class ChartNotesPlugin extends Plugin {
 				const xProp: any = {
 					type: "property",
 					key: "xProperty",
-					displayName: "X axis / category (bars & slices)",
+					// Nome neutro que serve pra barras, linhas e pie
+					displayName: "Category / group",
 				};
 
 				const yProp: any = {
