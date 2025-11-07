@@ -5,60 +5,69 @@ import {
   parsePropertyId,
 } from "obsidian";
 
-import type {
-  ChartSpec,
-  QueryResult,
-  QueryResultRow,
-} from "./types";
-import type {
-  PropChartsRenderer,
-  RenderContext,
-} from "./renderer";
+import type { ChartSpec, QueryResult, QueryResultRow } from "./types";
+import type { PropChartsRenderer, RenderContext } from "./renderer";
 
 export const CHARTNOTES_BASES_VIEW_TYPE = "chartnotes-view";
 
-/** Par (id, name) de uma propriedade do Bases. */
 type SelectedProp = {
   id: string | null;
   name: string | null;
 };
 
-type LocalKV = Record<string, unknown>;
+type ChartNotesBasesSettings = {
+  chartType: string;
+  xProperty: string | null;
+  yProperty: string | null;
+  seriesProperty: string | null;
+  startProperty: string | null;
+  endProperty: string | null;
+  dueProperty: string | null;
+  durationProperty: string | null;
+  groupProperty: string | null;
+};
 
-/**
- * View Chart Notes integrada ao Bases com UI PRÓPRIA.
- * Funciona no Obsidian 1.9.x (sem options()) e depois podemos migrar
- * para a UI nativa do Bases (options()) no 1.10+.
- */
+const ALLOWED_CHART_TYPES = [
+  "bar",
+  "stacked-bar",
+  "line",
+  "area",
+  "pie",
+  "scatter",
+  "gantt",
+] as const;
+
+type AllowedChartType = (typeof ALLOWED_CHART_TYPES)[number];
+
+function normalizeChartType(raw: unknown): AllowedChartType {
+  const t = String(raw ?? "bar").trim().toLowerCase();
+  return (ALLOWED_CHART_TYPES.includes(t as AllowedChartType)
+    ? t
+    : "bar") as AllowedChartType;
+}
+
 export class ChartNotesBasesView extends BasesView {
   readonly type = CHARTNOTES_BASES_VIEW_TYPE;
 
-  private hostEl: HTMLElement;     // raiz da view (painel + chart)
-  private toolbarEl!: HTMLElement; // painel de controles
-  private chartEl!: HTMLElement;   // container do gráfico
-  private styleInjected = false;
-
+  private containerEl: HTMLElement;
+  private controlsEl: HTMLElement;
+  private chartEl: HTMLElement;
   private renderer: PropChartsRenderer;
 
-  // fallback de estado quando this.config.set/get não existe:
-  private localConfig: LocalKV = {};
+  private settings: ChartNotesBasesSettings = {
+    chartType: "bar",
+    xProperty: null,
+    yProperty: null,
+    seriesProperty: null,
+    startProperty: null,
+    endProperty: null,
+    dueProperty: null,
+    durationProperty: null,
+    groupProperty: null,
+  };
 
-  // refs dos inputs (pra ler/escrever sem ficar buscando na DOM):
-  private inputs: {
-    type?: HTMLSelectElement;
-    x?: HTMLInputElement;
-    y?: HTMLInputElement;
-    series?: HTMLInputElement;
-    start?: HTMLInputElement;
-    end?: HTMLInputElement;
-    due?: HTMLInputElement;
-    duration?: HTMLInputElement;
-    group?: HTMLInputElement;
-    drilldown?: HTMLInputElement; // checkbox
-    background?: HTMLInputElement;
-    tooltip?: HTMLInputElement;   // comma list
-    hidePanel?: HTMLInputElement; // checkbox
-  } = {};
+  private groupedData: any[] = [];
+  private initializedFromConfig = false;
 
   constructor(
     controller: QueryController,
@@ -66,26 +75,247 @@ export class ChartNotesBasesView extends BasesView {
     renderer: PropChartsRenderer
   ) {
     super(controller);
+
     this.renderer = renderer;
 
-    this.hostEl = parentEl.createDiv("chartnotes-bases-view");
-    this.ensureScaffolding();
+    // usa diretamente o container que o Bases passa
+    this.containerEl = parentEl;
+    this.containerEl.empty();
+    this.containerEl.addClass("chartnotes-bases-root");
+
+    // barra de controles
+    this.controlsEl = this.containerEl.createDiv(
+      "chartnotes-bases-controls"
+    );
+    this.chartEl = this.containerEl.createDiv(
+      "chartnotes-bases-chart"
+    );
+
+    // estilo bem chamativo pra não ter dúvida que apareceu
+    const cs = this.controlsEl.style;
+    cs.display = "flex";
+    cs.flexWrap = "wrap";
+    cs.alignItems = "flex-end";
+    cs.gap = "8px";
+    cs.margin = "8px 0";
+    cs.padding = "6px 8px";
+    cs.borderBottom = "1px solid var(--background-modifier-border)";
+    cs.backgroundColor = "var(--background-secondary)";
+
+    const title = this.controlsEl.createEl("div");
+    title.textContent = "Chart Notes – controles (UI interna)";
+    title.style.fontWeight = "bold";
+    title.style.marginRight = "12px";
+  }
+
+  public onDataUpdated(): void {
+    const data: any = (this as any).data;
+    this.groupedData = (data?.groupedData ?? []) as any[];
+
+    if (!this.initializedFromConfig) {
+      this.loadSettingsFromConfig();
+      this.ensureDefaultsFromOrder();
+      this.initializedFromConfig = true;
+    }
+
+    this.buildControlsUI();
+    this.renderChart();
   }
 
   // ---------------------------------------------------------------------------
-  // Lifecycle
+  // Config
   // ---------------------------------------------------------------------------
 
-  public onDataUpdated(): void {
-    // constrói UI (se ainda não)
-    this.ensureScaffolding();
+  private loadSettingsFromConfig(): void {
+    const cfg: any = (this as any).config;
+    if (!cfg) return;
 
-    // lê dados do Bases
-    const grouped = (this as any).data?.groupedData as any[] | undefined;
+    const readString = (key: string): string | null => {
+      try {
+        const v = cfg.get(key);
+        if (typeof v === "string" && v.trim().length > 0) {
+          return v;
+        }
+      } catch {
+        // ignore
+      }
+      return null;
+    };
 
+    const ct = readString("chartType");
+    if (ct) {
+      this.settings.chartType = ct;
+    }
+
+    this.settings.xProperty = readString("xProperty");
+    this.settings.yProperty = readString("yProperty");
+    this.settings.seriesProperty = readString("seriesProperty");
+    this.settings.startProperty = readString("startProperty");
+    this.settings.endProperty = readString("endProperty");
+    this.settings.dueProperty = readString("dueProperty");
+    this.settings.durationProperty = readString("durationProperty");
+    this.settings.groupProperty = readString("groupProperty");
+  }
+
+  private saveSettingsToConfig(): void {
+    const cfg: any = (this as any).config;
+    if (!cfg || typeof cfg.set !== "function") return;
+
+    const set = (key: string, value: string | null) => {
+      try {
+        cfg.set(key, value ?? null);
+      } catch {
+        // ignore
+      }
+    };
+
+    set("chartType", this.settings.chartType);
+    set("xProperty", this.settings.xProperty);
+    set("yProperty", this.settings.yProperty);
+    set("seriesProperty", this.settings.seriesProperty);
+    set("startProperty", this.settings.startProperty);
+    set("endProperty", this.settings.endProperty);
+    set("dueProperty", this.settings.dueProperty);
+    set("durationProperty", this.settings.durationProperty);
+    set("groupProperty", this.settings.groupProperty);
+  }
+
+  private ensureDefaultsFromOrder(): void {
+    const cfg: any = (this as any).config;
+    const order = (cfg?.getOrder?.() as string[] | undefined) ?? [];
+    if (!order.length) return;
+
+    const pick = (index: number): string | null =>
+      index >= 0 && index < order.length ? order[index] : null;
+
+    if (!this.settings.xProperty) {
+      this.settings.xProperty = pick(0);
+    }
+    if (!this.settings.yProperty) {
+      this.settings.yProperty = pick(1);
+    }
+    if (!this.settings.seriesProperty) {
+      this.settings.seriesProperty = pick(2);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // UI de controles
+  // ---------------------------------------------------------------------------
+
+  private buildControlsUI(): void {
+    // limpa tudo, menos o título que já foi criado no constructor
+    const children = Array.from(this.controlsEl.children);
+    // mantém só o primeiro (o título)
+    for (let i = 1; i < children.length; i++) {
+      children[i].remove();
+    }
+
+    const cfg: any = (this as any).config;
+    const order = (cfg?.getOrder?.() as string[] | undefined) ?? [];
+
+    // Tipo do gráfico
+    const typeWrapper = this.controlsEl.createDiv(
+      "chartnotes-control"
+    );
+    const typeLabel = typeWrapper.createEl("label");
+    typeLabel.textContent = "Tipo:";
+    typeLabel.style.marginRight = "4px";
+
+    const typeSelect = typeWrapper.createEl(
+      "select"
+    ) as HTMLSelectElement;
+
+    for (const type of ALLOWED_CHART_TYPES) {
+      const opt = typeSelect.createEl("option");
+      opt.value = type;
+      opt.text = type;
+    }
+
+    typeSelect.value = normalizeChartType(
+      this.settings.chartType
+    ) as string;
+
+    typeSelect.onchange = () => {
+      this.settings.chartType = typeSelect.value;
+      this.saveSettingsToConfig();
+      this.renderChart();
+    };
+
+    const makePropSelect = (
+      key: keyof ChartNotesBasesSettings,
+      labelText: string
+    ) => {
+      const wrapper = this.controlsEl.createDiv(
+        "chartnotes-control"
+      );
+      const label = wrapper.createEl("label");
+      label.textContent = labelText;
+      label.style.marginRight = "4px";
+
+      const select = wrapper.createEl(
+        "select"
+      ) as HTMLSelectElement;
+
+      const emptyOpt = select.createEl("option");
+      emptyOpt.value = "";
+      emptyOpt.text = "(auto)";
+
+      for (const propId of order) {
+        let display = propId;
+        try {
+          const parsed = parsePropertyId(
+            propId as
+              | `note.${string}`
+              | `file.${string}`
+              | `formula.${string}`
+          );
+          const type = (parsed as any).type ?? "";
+          const name = (parsed as any).name ?? propId;
+          display = type ? `${name} (${type})` : name;
+        } catch {
+          // ignore
+        }
+
+        const opt = select.createEl("option");
+        opt.value = propId;
+        opt.text = display;
+      }
+
+      const current = (this.settings[key] ?? "") as string | null;
+      if (current) {
+        select.value = current;
+      }
+
+      select.onchange = () => {
+        const value = select.value || null;
+        (this.settings as any)[key] = value;
+        this.saveSettingsToConfig();
+        this.renderChart();
+      };
+    };
+
+    // X / Y / Série
+    makePropSelect("xProperty", "X:");
+    makePropSelect("yProperty", "Y:");
+    makePropSelect("seriesProperty", "Série:");
+
+    // Gantt
+    makePropSelect("startProperty", "Início:");
+    makePropSelect("endProperty", "Fim:");
+    makePropSelect("dueProperty", "Due:");
+    makePropSelect("durationProperty", "Duração:");
+    makePropSelect("groupProperty", "Grupo:");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Render do gráfico
+  // ---------------------------------------------------------------------------
+
+  private renderChart(): void {
     this.chartEl.empty();
 
-    if (!grouped || grouped.length === 0) {
+    if (!this.groupedData || this.groupedData.length === 0) {
       this.chartEl.createDiv({
         cls: "prop-charts-empty",
         text: "Sem dados (Base vazia ou sem resultados).",
@@ -93,421 +323,104 @@ export class ChartNotesBasesView extends BasesView {
       return;
     }
 
-    // coleta config (UI + fallback + defaults)
-    const chartType = this.getChartType();
-    const rows =
-      chartType === "gantt"
-        ? this.buildRowsForGantt(grouped)
-        : chartType === "scatter"
-        ? this.buildRowsForScatter(grouped)
-        : this.buildRowsForAggregatedCharts(grouped);
+    const chartType = normalizeChartType(
+      this.settings.chartType
+    );
+
+    let rows: QueryResultRow[];
+    if (chartType === "gantt") {
+      rows = this.buildRowsForGantt(this.groupedData);
+    } else if (chartType === "scatter") {
+      rows = this.buildRowsForScatter(this.groupedData);
+    } else {
+      rows = this.buildRowsForAggregatedCharts(this.groupedData);
+    }
 
     if (!rows.length) {
       this.chartEl.createDiv({
         cls: "prop-charts-empty",
-        text:
-          "Sem linhas para exibir. Verifique as propriedades X/Y (ou campos Gantt).",
+        text: "Sem linhas para exibir (verifique as propriedades X/Y).",
       });
       return;
     }
 
     const result: QueryResult = { rows };
+    const encoding = this.buildEncoding();
+
+    const cfg: any = (this as any).config;
+    const viewName: string =
+      cfg?.name ?? "Chart Notes (Bases)";
+
     const spec: ChartSpec = {
       type: chartType as any,
-      source: { type: "properties", query: "" } as any,
-      encoding: this.buildEncoding() as any,
+      source: {
+        type: "properties",
+        query: "",
+      } as any,
+      encoding: encoding as any,
       options: {
-        title: this.getString("title") || (this as any).config?.name || "Chart Notes (Bases)",
-        drilldown: this.getBool("drilldown", true),
-        background: this.getString("background") || undefined,
-        tooltipFields: this.getCsvArray("tooltip"),
+        title: viewName,
+        drilldown: true,
       },
     };
 
-    const ctx: RenderContext = { refresh: () => this.onDataUpdated() };
+    const ctx: RenderContext = {
+      refresh: () => this.onDataUpdated(),
+    };
 
     this.renderer.render(this.chartEl, spec, result, ctx);
   }
 
   // ---------------------------------------------------------------------------
-  // UI
+  // Helpers de propriedades / valores
   // ---------------------------------------------------------------------------
 
-  private ensureScaffolding() {
-    // CSS (uma vez)
-    if (!this.styleInjected) {
-      this.styleInjected = true;
-      const style = document.createElement("style");
-      style.textContent = `
-        .chartnotes-bases-view {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          height: 100%;
-        }
-        .chartnotes-toolbar {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 8px;
-          align-items: end;
-          background: var(--background-secondary);
-          padding: 8px;
-          border-radius: 8px;
-        }
-        .chartnotes-toolbar .field {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-        .chartnotes-toolbar .field label {
-          font-size: 12px;
-          opacity: 0.8;
-        }
-        .chartnotes-toolbar input[type="text"],
-        .chartnotes-toolbar input[type="search"],
-        .chartnotes-toolbar input[type="color"],
-        .chartnotes-toolbar select {
-          width: 100%;
-        }
-        .chartnotes-toolbar .row-span-2 {
-          grid-column: span 2;
-        }
-        .chartnotes-chart {
-          flex: 1 1 auto;
-          min-height: 220px;
-        }
-        .chartnotes-toolbar .toggle-line {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding-top: 10px;
-        }
-        .chartnotes-hidden { display: none; }
-      `;
-      this.hostEl.appendChild(style);
+  private getSelectedProp(
+    field: keyof ChartNotesBasesSettings
+  ): SelectedProp {
+    const id = this.settings[field];
+    if (!id) {
+      return { id: null, name: null };
     }
-
-    // toolbar + chart containers (uma vez)
-    if (!this.toolbarEl) {
-      this.toolbarEl = this.hostEl.createDiv("chartnotes-toolbar");
-      this.buildControls(this.toolbarEl);
-    }
-    if (!this.chartEl) {
-      this.chartEl = this.hostEl.createDiv("chartnotes-chart");
-    }
-  }
-
-  private buildControls(root: HTMLElement) {
-    root.empty();
-
-    // Lista de propriedades sugeridas (order do Bases)
-    const order = this.getOrderProps();
-
-    const mkField = (labelText: string, cls?: string) => {
-      const wrap = root.createDiv({ cls: "field" + (cls ? " " + cls : "") });
-      const label = wrap.createEl("label", { text: labelText });
-      return { wrap, label };
-    };
-
-    // Tipo
-    {
-      const { wrap } = mkField("Tipo do gráfico");
-      const sel = wrap.createEl("select");
-      [
-        ["bar", "Barra"],
-        ["stacked-bar", "Barra empilhada"],
-        ["line", "Linha"],
-        ["area", "Área"],
-        ["pie", "Pizza"],
-        ["scatter", "Dispersão"],
-        ["gantt", "Gantt"],
-      ].forEach(([v, txt]) => {
-        const opt = sel.createEl("option", { text: txt }) as HTMLOptionElement;
-        opt.value = v;
-      });
-      sel.value = this.getString("chartType") || "bar";
-      sel.addEventListener("change", () => {
-        this.setConfig("chartType", sel.value);
-        this.toggleGanttFields();
-        this.onDataUpdated();
-      });
-      this.inputs.type = sel;
-    }
-
-    // helpers input texto + datalist
-    const buildPropInput = (
-      key: keyof ChartnotesConfigKeys,
-      label: string,
-      placeholder = ""
-    ) => {
-      const { wrap } = mkField(label);
-      const input = wrap.createEl("input", {
-        type: "search",
-        placeholder,
-      }) as HTMLInputElement;
-
-      // datalist com sugestões
-      const listId = `chartnotes-props-${key}-${Math.random().toString(36).slice(2)}`;
-      input.setAttr("list", listId);
-      const dl = wrap.createEl("datalist");
-      dl.id = listId;
-
-      // Popular com order() + algumas comuns
-      const suggestions = new Set<string>([
-        ...order,
-        "note.status",
-        "note.priority",
-        "note.category",
-        "note.tags",
-        "note.scheduled",
-        "note.due",
-        "note.start",
-        "note.end",
-        "note.duration",
-        "file.name",
-      ]);
-      suggestions.forEach((s) => dl.createEl("option", { value: s }));
-
-      // valor inicial
-      input.value = this.getString(key as any) || "";
-
-      input.addEventListener("change", () => {
-        this.setConfig(key as any, input.value.trim() || null);
-        this.onDataUpdated();
-      });
-
-      // salvar ref
-      (this.inputs as any)[key] = input;
-    };
-
-    type ChartnotesConfigKeys =
-      | "xProperty"
-      | "yProperty"
-      | "seriesProperty"
-      | "startProperty"
-      | "endProperty"
-      | "dueProperty"
-      | "durationProperty"
-      | "groupProperty"
-      | "title"
-      | "background"
-      | "tooltip"
-      | "chartType"
-      | "drilldown";
-
-    // X / Y / Série
-    buildPropInput("xProperty", "Propriedade X / label", "ex: note.category");
-    buildPropInput("yProperty", "Propriedade Y / valor (vazio = contagem)", "ex: note.priority");
-    buildPropInput("seriesProperty", "Série (opcional, cores/legenda)", "ex: note.status");
-
-    // Gantt
-    buildPropInput("startProperty", "Início (Gantt)", "ex: note.start");
-    buildPropInput("endProperty", "Fim (Gantt)", "ex: note.end");
-    buildPropInput("dueProperty", "Due date (Gantt, opcional)", "ex: note.due");
-    buildPropInput("durationProperty", "Duração em minutos (Gantt, opcional)", "ex: note.duration");
-    buildPropInput("groupProperty", "Grupo / lane (Gantt / séries)", "ex: note.category");
-
-    // Título
-    {
-      const { wrap } = mkField("Título (opcional)");
-      const input = wrap.createEl("input", {
-        type: "text",
-        placeholder: "(vazio = usa nome da view)",
-      }) as HTMLInputElement;
-      input.value = this.getString("title") || "";
-      input.addEventListener("change", () => {
-        this.setConfig("title", input.value.trim());
-        this.onDataUpdated();
-      });
-      this.inputs.background = this.inputs.background; // no-op só pra manter ordem
-      // guardar? não precisa — não usamos ref pra título depois
-    }
-
-    // Background
-    {
-      const { wrap } = mkField("Cor de fundo (hex opcional)");
-      const input = wrap.createEl("input", {
-        type: "text",
-        placeholder: "#ffffff",
-      }) as HTMLInputElement;
-      input.value = this.getString("background") || "";
-      input.addEventListener("change", () => {
-        this.setConfig("background", input.value.trim());
-        this.onDataUpdated();
-      });
-      this.inputs.background = input;
-    }
-
-    // Tooltip extra (CSV)
-    {
-      const { wrap } = mkField("Campos extras (tooltip, separados por vírgula)", "row-span-2");
-      const input = wrap.createEl("input", {
-        type: "text",
-        placeholder: "ex: status,priority,owner",
-      }) as HTMLInputElement;
-      input.value = (this.getCsvArray("tooltip") || []).join(",");
-      input.addEventListener("change", () => {
-        this.setConfig("tooltip", input.value);
-        this.onDataUpdated();
-      });
-      this.inputs.tooltip = input;
-    }
-
-    // Drilldown + esconder painel
-    {
-      const { wrap } = mkField("Ações");
-      const line = wrap.createDiv("toggle-line");
-
-      const drill = line.createEl("input", { type: "checkbox" }) as HTMLInputElement;
-      drill.checked = this.getBool("drilldown", true);
-      drill.addEventListener("change", () => {
-        this.setConfig("drilldown", !!drill.checked);
-        this.onDataUpdated();
-      });
-      line.createEl("span", { text: "Drilldown (abrir notas ao clicar)" });
-      this.inputs.drilldown = drill;
-
-      const hide = line.createEl("input", { type: "checkbox", attr: { style: "margin-left:16px" } }) as HTMLInputElement;
-      hide.checked = this.getBool("hidePanel", false);
-      hide.addEventListener("change", () => {
-        this.setConfig("hidePanel", !!hide.checked);
-        this.toggleToolbarVisibility();
-      });
-      line.createEl("span", { text: "Ocultar painel" });
-      this.inputs.hidePanel = hide;
-    }
-
-    // Mostrar/ocultar campos de Gantt conforme tipo atual
-    this.toggleGanttFields();
-    // Aplicar visibilidade do painel
-    this.toggleToolbarVisibility();
-  }
-
-  private toggleGanttFields() {
-    const isGantt = this.getChartType() === "gantt";
-    const labels = Array.from(this.toolbarEl.querySelectorAll("label"));
-    const wanted = new Set(["Início (Gantt)", "Fim (Gantt)", "Due date (Gantt, opcional)", "Duração em minutos (Gantt, opcional)", "Grupo / lane (Gantt / séries)"]);
-    labels.forEach((lab) => {
-      const field = lab.closest(".field") as HTMLElement | null;
-      if (!field) return;
-      if (wanted.has(lab.textContent || "")) {
-        field.classList.toggle("chartnotes-hidden", !isGantt);
-      }
-    });
-  }
-
-  private toggleToolbarVisibility() {
-    const hide = this.getBool("hidePanel", false);
-    this.toolbarEl.classList.toggle("chartnotes-hidden", hide);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Config helpers (com fallback local)
-  // ---------------------------------------------------------------------------
-
-  private getConfigObj(): any {
-    return (this as any).config ?? null;
-  }
-
-  private getString(key: string): string | null {
-    const cfg = this.getConfigObj();
-    if (cfg?.get) {
-      const v = cfg.get(key);
-      return v == null ? null : String(v);
-    }
-    const v = this.localConfig[key];
-    return v == null ? null : String(v);
-  }
-
-  private getBool(key: string, def = false): boolean {
-    const cfg = this.getConfigObj();
-    if (cfg?.get) {
-      const v = cfg.get(key);
-      return typeof v === "boolean" ? v : def;
-    }
-    const v = this.localConfig[key];
-    return typeof v === "boolean" ? (v as boolean) : def;
-  }
-
-  private getCsvArray(key: string): string[] | undefined {
-    const raw = this.getString(key);
-    if (!raw) return undefined;
-    const arr = raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-    return arr.length ? arr : undefined;
-  }
-
-  private setConfig(key: string, value: unknown) {
-    const cfg = this.getConfigObj();
-    if (cfg?.set) {
-      try {
-        cfg.set(key, value);
-        return;
-      } catch {
-        // ignore e cai no fallback local
-      }
-    }
-    this.localConfig[key] = value as any;
-  }
-
-  private getChartType(): "bar" | "stacked-bar" | "line" | "area" | "pie" | "scatter" | "gantt" {
-    const t = (this.getString("chartType") || "bar").toLowerCase().trim();
-    const allow = new Set(["bar", "stacked-bar", "line", "area", "pie", "scatter", "gantt"]);
-    return (allow.has(t) ? t : "bar") as any;
-  }
-
-  private getOrderProps(): string[] {
-    const cfg = this.getConfigObj();
-    const arr = (cfg?.getOrder?.() as string[] | undefined) ?? [];
-    return Array.isArray(arr) ? arr : [];
-  }
-
-  // ---------------------------------------------------------------------------
-  // Propriedades / leitura
-  // ---------------------------------------------------------------------------
-
-  private getSelectedProp(configKey: string): SelectedProp {
-    // 1) valor escolhido na UI
-    let rawId = this.getString(configKey);
-
-    // 2) fallback pelo order() do Bases
-    if (!rawId) {
-      const order = this.getOrderProps();
-      if (order?.length) {
-        if (configKey === "xProperty") rawId = order[0];
-        else if (configKey === "yProperty") rawId = order[1];
-        else if (configKey === "seriesProperty") rawId = order[2];
-        else if (configKey === "groupProperty") rawId = order[0];
-      }
-    }
-
-    if (!rawId) return { id: null, name: null };
 
     try {
-      const parsed = parsePropertyId(rawId as any);
+      const parsed = parsePropertyId(
+        id as
+          | `note.${string}`
+          | `file.${string}`
+          | `formula.${string}`
+      );
       return {
-        id: rawId,
-        name: (parsed as any)?.name ?? rawId,
+        id,
+        name: (parsed as any).name ?? id,
       };
     } catch {
-      return { id: rawId, name: rawId };
+      return { id, name: id };
     }
   }
 
-  private readValue(entry: any, prop: SelectedProp): string | null {
+  private readValue(
+    entry: any,
+    prop: SelectedProp
+  ): string | null {
     if (!prop.id) return null;
+
     let value: any;
     try {
       value = entry.getValue(prop.id);
     } catch {
       return null;
     }
+
     if (!value) return null;
 
     try {
-      if (typeof value.isEmpty === "function" && value.isEmpty()) return null;
+      if (
+        typeof value.isEmpty === "function" &&
+        value.isEmpty()
+      ) {
+        return null;
+      }
     } catch {
       // ignore
     }
@@ -535,13 +448,17 @@ export class ChartNotesBasesView extends BasesView {
   // Builders de linhas
   // ---------------------------------------------------------------------------
 
-  /** bar/line/area/pie/stacked-bar: agrega por (x, série). Y = soma ou contagem. */
-  private buildRowsForAggregatedCharts(groups: any[]): QueryResultRow[] {
+  private buildRowsForAggregatedCharts(
+    groups: any[]
+  ): QueryResultRow[] {
     const xProp = this.getSelectedProp("xProperty");
     const yProp = this.getSelectedProp("yProperty");
     const seriesProp = this.getSelectedProp("seriesProperty");
 
-    const byKey = new Map<string, QueryResultRow & { props: Record<string, any> }>();
+    const byKey = new Map<
+      string,
+      QueryResultRow & { props: Record<string, any> }
+    >();
 
     for (const group of groups) {
       for (const entry of group.entries as any[]) {
@@ -549,7 +466,9 @@ export class ChartNotesBasesView extends BasesView {
 
         const xStr =
           this.readValue(entry, xProp) ??
-          (file?.name ? String(file.name) : String(file?.path ?? ""));
+          (file?.name
+            ? String(file.name)
+            : String(file?.path ?? ""));
 
         const yStr = this.readValue(entry, yProp);
 
@@ -562,31 +481,47 @@ export class ChartNotesBasesView extends BasesView {
         }
 
         const seriesStr = this.readValue(entry, seriesProp);
-        const series = seriesStr != null ? String(seriesStr) : undefined;
+        const series =
+          seriesStr != null ? String(seriesStr) : undefined;
 
         const key = `${xStr}@@${series ?? ""}`;
 
         let row = byKey.get(key);
         if (!row) {
-          row = { x: xStr, y: 0, series, notes: [], props: {} };
+          row = {
+            x: xStr,
+            y: 0,
+            series,
+            notes: [],
+            props: {},
+          };
           byKey.set(key, row);
         }
 
         row.y += yNum;
 
-        if (file?.path) row.notes!.push(file.path);
+        if (file?.path) {
+          row.notes!.push(file.path);
+        }
 
-        if (row.props && xProp.name) row.props[xProp.name] = xStr;
-        if (row.props && yProp.name && yStr != null) row.props[yProp.name] = yNum;
-        if (row.props && seriesProp.name && seriesStr != null) row.props[seriesProp.name] = seriesStr;
+        if (row.props && xProp.name) {
+          row.props[xProp.name] = xStr;
+        }
+        if (row.props && yProp.name && yStr != null) {
+          row.props[yProp.name] = yNum;
+        }
+        if (row.props && seriesProp.name && seriesStr != null) {
+          row.props[seriesProp.name] = seriesStr;
+        }
       }
     }
 
     return Array.from(byKey.values());
   }
 
-  /** scatter: uma linha por entry com X/Y numéricos. */
-  private buildRowsForScatter(groups: any[]): QueryResultRow[] {
+  private buildRowsForScatter(
+    groups: any[]
+  ): QueryResultRow[] {
     const xProp = this.getSelectedProp("xProperty");
     const yProp = this.getSelectedProp("yProperty");
     const seriesProp = this.getSelectedProp("seriesProperty");
@@ -606,22 +541,27 @@ export class ChartNotesBasesView extends BasesView {
         if (Number.isNaN(xNum) || Number.isNaN(yNum)) continue;
 
         const seriesStr = this.readValue(entry, seriesProp);
-        const series = seriesStr != null ? String(seriesStr) : undefined;
+        const series =
+          seriesStr != null ? String(seriesStr) : undefined;
 
-        rows.push({
+        const row: QueryResultRow = {
           x: xNum,
           y: yNum,
           series,
           notes: file?.path ? [file.path] : [],
           props: {},
-        });
+        };
+
+        rows.push(row);
       }
     }
+
     return rows;
   }
 
-  /** gantt: uma linha por tarefa com start/end/due/duration/group. */
-  private buildRowsForGantt(groups: any[]): QueryResultRow[] {
+  private buildRowsForGantt(
+    groups: any[]
+  ): QueryResultRow[] {
     const xProp = this.getSelectedProp("xProperty");
     const seriesProp = this.getSelectedProp("seriesProperty");
     const startProp = this.getSelectedProp("startProperty");
@@ -646,25 +586,36 @@ export class ChartNotesBasesView extends BasesView {
 
         const label =
           this.readValue(entry, xProp) ??
-          (file?.name ? String(file.name).replace(/\.md$/i, "") : String(file?.path ?? ""));
+          (file?.name
+            ? String(file.name).replace(/\.md$/i, "")
+            : String(file?.path ?? ""));
 
         const dueStr = this.readValue(entry, dueProp);
         const due = this.parseDate(dueStr ?? null);
 
         const durationStr = this.readValue(entry, durationProp);
-        const durationMinutes = durationStr != null ? Number(durationStr) : undefined;
-        const hasDuration = typeof durationMinutes === "number" && !Number.isNaN(durationMinutes);
+        const durationMinutes =
+          durationStr != null ? Number(durationStr) : undefined;
+        const hasDuration =
+          typeof durationMinutes === "number" &&
+          !Number.isNaN(durationMinutes);
 
         const seriesStr = this.readValue(entry, seriesProp);
-        const series = seriesStr != null ? String(seriesStr) : undefined;
+        const series =
+          seriesStr != null ? String(seriesStr) : undefined;
 
         const groupVal = this.readValue(entry, groupProp);
 
         const props: Record<string, any> = {};
-        if (durationProp.name && hasDuration) props[durationProp.name] = durationMinutes;
-        if (groupProp.name && groupVal != null) props[groupProp.name] = groupVal;
 
-        rows.push({
+        if (durationProp.name && hasDuration) {
+          props[durationProp.name] = durationMinutes;
+        }
+        if (groupProp.name && groupVal != null) {
+          props[groupProp.name] = groupVal;
+        }
+
+        const row: QueryResultRow = {
           x: label,
           y: 0,
           series,
@@ -673,13 +624,15 @@ export class ChartNotesBasesView extends BasesView {
           due: due ?? undefined,
           notes: file?.path ? [file.path] : [],
           props,
-        });
+        };
+
+        rows.push(row);
       }
     }
+
     return rows;
   }
 
-  /** encoding básico (gantt usa; os demais ignoram o que não precisam). */
   private buildEncoding(): any {
     const xProp = this.getSelectedProp("xProperty");
     const yProp = this.getSelectedProp("yProperty");
