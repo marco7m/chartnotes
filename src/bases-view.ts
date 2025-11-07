@@ -91,7 +91,7 @@ export class ChartNotesBasesView extends BasesView {
 
     let seriesProp = this.getPropFromConfig("seriesProperty");
     if (isPie) {
-      // Em Pie, NENHUMA série: sempre agregamos apenas por categoria
+      // Em Pie, nunca usamos série – sempre agregamos só por categoria.
       seriesProp = { id: null, name: null };
     }
 
@@ -320,6 +320,110 @@ export class ChartNotesBasesView extends BasesView {
     }
   }
 
+  // ---------- X multi-valor (usado para Pie / tags) ----------
+
+  private getXValuesForEntry(
+    entry: any,
+    xProp: SelectedProp,
+    xBucket: XBucket,
+    multi: boolean,
+  ): string[] {
+    const values: string[] = [];
+
+    const applyBucket = (s: string) => this.bucketX(s, xBucket);
+
+    // Se não houver property de X definida, usa nome/path do arquivo.
+    if (!xProp.id) {
+      const file = entry.file;
+      const raw =
+        file?.name ? String(file.name) : String(file?.path ?? MISSING_LABEL);
+      values.push(applyBucket(raw));
+      return values;
+    }
+
+    // Caso simples: não queremos multiplicar X (barras/linhas/etc.)
+    if (!multi) {
+      const v = this.readValue(entry, xProp) ?? MISSING_LABEL;
+      values.push(applyBucket(v));
+      return values;
+    }
+
+    // multi = true → tentar explodir multi-valor (tags, listas, etc.)
+    let raw: any = null;
+    try {
+      raw = entry.getValue(xProp.id);
+    } catch {
+      raw = null;
+    }
+
+    const pushStr = (s: string | null | undefined) => {
+      if (!s) return;
+      const trimmed = String(s).trim();
+      if (!trimmed) return;
+      values.push(applyBucket(trimmed));
+    };
+
+    if (raw == null) {
+      pushStr(MISSING_LABEL);
+    } else if (typeof raw === "string") {
+      // Heurística para tags/strings multi: "#tag1 #tag2 ..."
+      const trimmed = raw.trim();
+      if (trimmed) {
+        const parts = trimmed.split(/\s+/);
+        for (const part of parts) {
+          pushStr(part);
+        }
+      }
+    } else if (Array.isArray(raw)) {
+      for (const item of raw) {
+        if (item == null) continue;
+        let s: string;
+        try {
+          s = item.toString();
+        } catch {
+          continue;
+        }
+        pushStr(s);
+      }
+    } else if (typeof (raw as any).toArray === "function") {
+      const arr = (raw as any).toArray();
+      if (Array.isArray(arr)) {
+        for (const item of arr) {
+          if (item == null) continue;
+          let s: string;
+          try {
+            s = item.toString();
+          } catch {
+            continue;
+          }
+          pushStr(s);
+        }
+      } else {
+        let s: string;
+        try {
+          s = (raw as any).toString();
+        } catch {
+          s = "";
+        }
+        pushStr(s);
+      }
+    } else {
+      let s: string;
+      try {
+        s = (raw as any).toString();
+      } catch {
+        s = "";
+      }
+      pushStr(s);
+    }
+
+    if (!values.length) {
+      pushStr(MISSING_LABEL);
+    }
+
+    return values;
+  }
+
   // ---------- builders ----------
 
   private buildRowsForAggregatedCharts(
@@ -340,18 +444,14 @@ export class ChartNotesBasesView extends BasesView {
       for (const entry of group.entries as any[]) {
         const file = entry.file;
 
-        let rawX: string;
-        if (xProp.id) {
-          const v = this.readValue(entry, xProp);
-          rawX = v ?? MISSING_LABEL;
-        } else {
-          rawX =
-            file?.name ? String(file.name) : String(file?.path ?? MISSING_LABEL);
-        }
+        const xValues = this.getXValuesForEntry(
+          entry,
+          xProp,
+          xBucket,
+          forceCount,
+        );
 
-        const xStr = this.bucketX(rawX, xBucket);
-
-        let yNum = 1;
+        let baseYNum = 1;
         let yStr: string | null = null;
 
         if (!treatAsCount && yProp.id) {
@@ -359,30 +459,34 @@ export class ChartNotesBasesView extends BasesView {
           if (yStr == null) continue;
           const n = Number(yStr);
           if (Number.isNaN(n)) continue;
-          yNum = n;
+          baseYNum = n;
         } else {
-          yNum = 1;
+          baseYNum = 1;
         }
 
         const seriesStr = this.readValue(entry, seriesProp);
         const series = seriesStr != null ? String(seriesStr) : undefined;
 
-        const key = `${xStr}@@${series ?? ""}`;
-        let row = byKey.get(key);
-        if (!row) {
-          row = { x: xStr, y: 0, series, notes: [], props: {} };
-          byKey.set(key, row);
-        }
+        for (const xStr of xValues) {
+          const key = `${xStr}@@${series ?? ""}`;
 
-        row.y += yNum;
-        if (file?.path) row.notes!.push(file.path);
+          let row = byKey.get(key);
+          if (!row) {
+            row = { x: xStr, y: 0, series, notes: [], props: {} };
+            byKey.set(key, row);
+          }
 
-        if (row.props && xProp.name) row.props[xProp.name] = xStr;
-        if (!treatAsCount && row.props && yProp.name && yStr != null) {
-          row.props[yProp.name] = row.y;
-        }
-        if (row.props && seriesProp.name && seriesStr != null) {
-          row.props[seriesProp.name] = seriesStr;
+          row.y += baseYNum;
+
+          if (file?.path) row.notes!.push(file.path);
+
+          if (row.props && xProp.name) row.props[xProp.name] = xStr;
+          if (!treatAsCount && row.props && yProp.name && yStr != null) {
+            row.props[yProp.name] = row.y;
+          }
+          if (row.props && seriesProp.name && seriesStr != null) {
+            row.props[seriesProp.name] = seriesStr;
+          }
         }
       }
     }
@@ -545,11 +649,9 @@ export class ChartNotesBasesView extends BasesView {
     xBucket: XBucket;
     chartType: AllowedChartType;
   }): any {
-    // IMPORTANTE:
-    // encoding.x / encoding.y precisam ser nomes de propriedades,
-    // não labels bonitinhos, senão o renderer passa a olhar para
-    // outras coisas (ex.: file.name) e o Pie vira "1 fatia por nota".
-
+    // IMPORTANTE: x/y aqui são nomes de propriedades,
+    // não rótulos bonitinhos. O renderer usa isso pra procurar
+    // os campos nos dados. O label humano fica por conta dele.
     const xKey = fields.x.name ?? "x";
     const yKey = fields.y.name ?? "y";
 
@@ -564,6 +666,5 @@ export class ChartNotesBasesView extends BasesView {
       group: fields.group.name ?? "group",
     };
   }
-
 }
 
