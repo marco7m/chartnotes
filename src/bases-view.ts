@@ -37,6 +37,8 @@ function normalizeXBucket(raw: unknown): XBucket {
 type SelectedProp = { id: string | null; name: string | null };
 type PropsMap = Record<string, any>;
 
+const MISSING_LABEL = "(missing)";
+
 export class ChartNotesBasesView extends BasesView {
   readonly type = CHARTNOTES_BASES_VIEW_TYPE;
 
@@ -69,20 +71,27 @@ export class ChartNotesBasesView extends BasesView {
     const cfg: any = (this as any).config;
 
     const chartType = normalizeChartType(cfg?.get("chartType") ?? "bar");
+    const isPie = chartType === "pie";
+    const isScatter = chartType === "scatter";
+    const isGantt = chartType === "gantt";
+
     const aggModeCfg = normalizeAggregationMode(cfg?.get("aggregateMode"));
     const allowCumulative = chartType === "line" || chartType === "area";
     const aggMode: AggregationMode =
-      aggModeCfg === "cumulative-sum" && !allowCumulative ? "sum" : aggModeCfg;
+      aggModeCfg === "cumulative-sum" && !allowCumulative
+        ? "sum"
+        : aggModeCfg;
 
-    const xBucket = normalizeXBucket(cfg?.get("xBucket"));
+    const rawXBucket = normalizeXBucket(cfg?.get("xBucket"));
+    const xBucket: XBucket =
+      isPie || isScatter || isGantt ? "none" : rawXBucket;
 
     const xProp = this.getPropFromConfig("xProperty");
     const yProp = this.getPropFromConfig("yProperty");
 
     let seriesProp = this.getPropFromConfig("seriesProperty");
-    const isPie = chartType === "pie";
     if (isPie) {
-      // Pra Pie, sempre agregar só por X independentemente de série salva
+      // Em Pie, NENHUMA série: sempre agregamos apenas por categoria
       seriesProp = { id: null, name: null };
     }
 
@@ -93,13 +102,10 @@ export class ChartNotesBasesView extends BasesView {
     const durationProp = this.getPropFromConfig("durationProperty");
     const groupProp = this.getPropFromConfig("groupProperty");
 
-    const isGantt = chartType === "gantt";
-    const isScatter = chartType === "scatter";
-
     if (!isGantt && !xProp.id) {
       this.rootEl.createDiv({
         cls: "prop-charts-empty",
-        text: "Configure the 'Category / X axis' property in view options.",
+        text: "Configure the 'X axis / category' property in view options.",
       });
       return;
     }
@@ -140,6 +146,7 @@ export class ChartNotesBasesView extends BasesView {
     } else if (isScatter) {
       rows = this.buildRowsForScatter(grouped, xProp, yProp, seriesProp);
     } else {
+      const forceCountForPie = isPie;
       rows = this.buildRowsForAggregatedCharts(
         grouped,
         xProp,
@@ -147,6 +154,7 @@ export class ChartNotesBasesView extends BasesView {
         seriesProp,
         aggMode,
         xBucket,
+        forceCountForPie,
       );
     }
 
@@ -159,8 +167,10 @@ export class ChartNotesBasesView extends BasesView {
     }
 
     const result: QueryResult = { rows };
+
     const titleRaw = (cfg?.get("title") as string | undefined) ?? "";
     const title = titleRaw.trim() || cfg?.name || "Chart Notes (Bases)";
+
     const drilldownCfg = cfg?.get("drilldown");
     const drilldown =
       typeof drilldownCfg === "boolean" ? drilldownCfg : true;
@@ -176,6 +186,7 @@ export class ChartNotesBasesView extends BasesView {
       group: groupProp,
       aggMode,
       xBucket,
+      chartType,
     });
 
     const spec: ChartSpec = {
@@ -217,6 +228,7 @@ export class ChartNotesBasesView extends BasesView {
 
   private readValue(entry: any, prop: SelectedProp): string | null {
     if (!prop.id) return null;
+
     let value: any;
     try {
       value = entry.getValue(prop.id);
@@ -317,19 +329,26 @@ export class ChartNotesBasesView extends BasesView {
     seriesProp: SelectedProp,
     aggMode: AggregationMode,
     xBucket: XBucket,
+    forceCount: boolean,
   ): QueryResultRow[] {
     const byKey = new Map<string, QueryResultRow & { props: PropsMap }>();
 
     const treatAsCount =
-      aggMode === "count" || (!yProp.id && aggMode !== "sum");
+      forceCount || aggMode === "count" || (!yProp.id && aggMode !== "sum");
 
     for (const group of groups) {
       for (const entry of group.entries as any[]) {
         const file = entry.file;
 
-        const rawX =
-          this.readValue(entry, xProp) ??
-          (file?.name ? String(file.name) : String(file?.path ?? ""));
+        let rawX: string;
+        if (xProp.id) {
+          const v = this.readValue(entry, xProp);
+          rawX = v ?? MISSING_LABEL;
+        } else {
+          rawX =
+            file?.name ? String(file.name) : String(file?.path ?? MISSING_LABEL);
+        }
+
         const xStr = this.bucketX(rawX, xBucket);
 
         let yNum = 1;
@@ -377,7 +396,12 @@ export class ChartNotesBasesView extends BasesView {
     const bySeries = new Map<string, QueryResultRow[]>();
     for (const r of rows) {
       const key = r.series ?? "__no_series__";
-      (bySeries.get(key) ?? bySeries.set(key, []).get(key)!).push(r);
+      let list = bySeries.get(key);
+      if (!list) {
+        list = [];
+        bySeries.set(key, list);
+      }
+      list.push(r);
     }
 
     const result: QueryResultRow[] = [];
@@ -461,7 +485,6 @@ export class ChartNotesBasesView extends BasesView {
         const due = this.parseDate(dueStr);
         const scheduled = this.parseDate(scheduledStr);
 
-        // Fallbacks:
         if (!start && hasDuration) {
           if (scheduled) {
             start = new Date(scheduled.getTime() - durationMin * 60_000);
@@ -520,19 +543,31 @@ export class ChartNotesBasesView extends BasesView {
     group: SelectedProp;
     aggMode: AggregationMode;
     xBucket: XBucket;
+    chartType: AllowedChartType;
   }): any {
     const isCount =
+      fields.chartType === "pie" ||
       fields.aggMode === "count" ||
       (!fields.y.id && fields.aggMode !== "sum");
 
     let yName: string;
-    if (isCount) yName = "Count";
-    else if (fields.aggMode === "cumulative-sum")
+    if (fields.chartType === "pie") {
+      yName = "Count";
+    } else if (isCount) {
+      yName = "Count";
+    } else if (fields.aggMode === "cumulative-sum") {
       yName = fields.y.name ? `${fields.y.name} (cumulative)` : "Cumulative";
-    else yName = fields.y.name ? `${fields.y.name} (sum)` : "Value";
+    } else {
+      yName = fields.y.name ? `${fields.y.name} (sum)` : "Value";
+    }
+
+    const useSuffix =
+      fields.chartType !== "pie" &&
+      fields.chartType !== "scatter" &&
+      fields.chartType !== "gantt";
 
     const xSuffix =
-      fields.xBucket && fields.xBucket !== "none"
+      useSuffix && fields.xBucket && fields.xBucket !== "none"
         ? ` (${fields.xBucket})`
         : "";
 

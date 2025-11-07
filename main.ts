@@ -143,7 +143,6 @@ export default class ChartNotesPlugin extends Plugin {
 		// Bases view (Obsidian 1.10+)
 		// -----------------------------------------------------------------
 
-
 		this.registerBasesView(CHARTNOTES_BASES_VIEW_TYPE, {
 			name: "Chart Notes",
 			icon: "lucide-chart-area",
@@ -171,25 +170,27 @@ export default class ChartNotesPlugin extends Plugin {
 				const xProp: any = {
 					type: "property",
 					key: "xProperty",
-					displayName: "Category / X axis (slice label)",
+					displayName: "X axis / category (bars & slices)",
 				};
 
 				const yProp: any = {
 					type: "property",
 					key: "yProperty",
-					displayName: "Value (Y) – empty = count",
+					displayName: "Y value (empty = count)",
+					// em Pie isso só atrapalha
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") === "pie",
 				};
 
 				const seriesProp: any = {
 					type: "property",
 					key: "seriesProperty",
 					displayName: "Series / color (optional)",
-					// para Pie isso só confunde, então some da UI
+					// em Pie a “série” só gera confusão → some
 					shouldHide: (config: any) =>
 						String(config.get("chartType") ?? "bar") === "pie",
 				};
 
-				// 🔢 Modo de agregação (tamanho da barra/linha/fatia)
 				const aggMode: any = {
 					type: "dropdown",
 					key: "aggregateMode",
@@ -200,14 +201,13 @@ export default class ChartNotesPlugin extends Plugin {
 						count: "Count (ignore Y)",
 						"cumulative-sum": "Cumulative (line/area only)",
 					},
+					// Pie, Scatter, Gantt não usam isso de forma útil
 					shouldHide: (config: any) => {
 						const t = String(config.get("chartType") ?? "bar");
-						// scatter não agrega; gantt não usa Y
-						return t === "scatter" || t === "gantt";
+						return t === "pie" || t === "scatter" || t === "gantt";
 					},
 				};
 
-				// 🧭 Bucket de datas em X (mantém o cumulative correto)
 				const xBucket: any = {
 					type: "dropdown",
 					key: "xBucket",
@@ -224,12 +224,11 @@ export default class ChartNotesPlugin extends Plugin {
 					},
 					shouldHide: (config: any) => {
 						const t = String(config.get("chartType") ?? "bar");
-						// pie/scatter/gantt: bucket de data geralmente não é o que se quer
+						// Pie/Scatter/Gantt: bucket de datas não faz sentido
 						return t === "pie" || t === "scatter" || t === "gantt";
 					},
 				};
 
-				// ⚙️ Campos de Gantt, só aparecem em Gantt
 				const mkGantt = (key: string, label: string): any => ({
 					type: "property",
 					key,
