@@ -41,10 +41,10 @@ type AllowedChartType = (typeof ALLOWED_CHART_TYPES)[number];
 
 function normalizeChartType(raw: unknown): AllowedChartType {
   const t = String(raw ?? "bar").trim().toLowerCase();
-  return (ALLOWED_CHART_TYPES.includes(t as AllowedChartType)
-    ? t
-    : "bar") as AllowedChartType;
+  return (ALLOWED_CHART_TYPES.includes(t as AllowedChartType) ? t : "bar") as AllowedChartType;
 }
+
+type PropsRecord = Record<string, any>;
 
 export class ChartNotesBasesView extends BasesView {
   readonly type = CHARTNOTES_BASES_VIEW_TYPE;
@@ -52,6 +52,7 @@ export class ChartNotesBasesView extends BasesView {
   private containerEl: HTMLElement;
   private controlsEl: HTMLElement;
   private chartEl: HTMLElement;
+
   private renderer: PropChartsRenderer;
 
   private settings: ChartNotesBasesSettings = {
@@ -72,26 +73,21 @@ export class ChartNotesBasesView extends BasesView {
   constructor(
     controller: QueryController,
     parentEl: HTMLElement,
-    renderer: PropChartsRenderer
+    renderer: PropChartsRenderer,
   ) {
     super(controller);
-
     this.renderer = renderer;
 
-    // usa diretamente o container que o Bases passa
+    // Usa diretamente o container da view do Bases
     this.containerEl = parentEl;
     this.containerEl.empty();
     this.containerEl.addClass("chartnotes-bases-root");
 
-    // barra de controles
-    this.controlsEl = this.containerEl.createDiv(
-      "chartnotes-bases-controls"
-    );
-    this.chartEl = this.containerEl.createDiv(
-      "chartnotes-bases-chart"
-    );
+    // Barra de controles + área do gráfico
+    this.controlsEl = this.containerEl.createDiv("chartnotes-bases-controls");
+    this.chartEl = this.containerEl.createDiv("chartnotes-bases-chart");
 
-    // estilo bem chamativo pra não ter dúvida que apareceu
+    // Estilo bem evidente pra você ver que apareceu
     const cs = this.controlsEl.style;
     cs.display = "flex";
     cs.flexWrap = "wrap";
@@ -143,9 +139,7 @@ export class ChartNotesBasesView extends BasesView {
     };
 
     const ct = readString("chartType");
-    if (ct) {
-      this.settings.chartType = ct;
-    }
+    if (ct) this.settings.chartType = ct;
 
     this.settings.xProperty = readString("xProperty");
     this.settings.yProperty = readString("yProperty");
@@ -188,25 +182,18 @@ export class ChartNotesBasesView extends BasesView {
     const pick = (index: number): string | null =>
       index >= 0 && index < order.length ? order[index] : null;
 
-    if (!this.settings.xProperty) {
-      this.settings.xProperty = pick(0);
-    }
-    if (!this.settings.yProperty) {
-      this.settings.yProperty = pick(1);
-    }
-    if (!this.settings.seriesProperty) {
-      this.settings.seriesProperty = pick(2);
-    }
+    if (!this.settings.xProperty) this.settings.xProperty = pick(0);
+    if (!this.settings.yProperty) this.settings.yProperty = pick(1);
+    if (!this.settings.seriesProperty) this.settings.seriesProperty = pick(2);
   }
 
   // ---------------------------------------------------------------------------
-  // UI de controles
+  // UI de controles (HTML interno, independente do Bases)
   // ---------------------------------------------------------------------------
 
   private buildControlsUI(): void {
-    // limpa tudo, menos o título que já foi criado no constructor
+    // remove tudo exceto o primeiro filho (o título que criamos no ctor)
     const children = Array.from(this.controlsEl.children);
-    // mantém só o primeiro (o título)
     for (let i = 1; i < children.length; i++) {
       children[i].remove();
     }
@@ -215,26 +202,18 @@ export class ChartNotesBasesView extends BasesView {
     const order = (cfg?.getOrder?.() as string[] | undefined) ?? [];
 
     // Tipo do gráfico
-    const typeWrapper = this.controlsEl.createDiv(
-      "chartnotes-control"
-    );
+    const typeWrapper = this.controlsEl.createDiv("chartnotes-control");
     const typeLabel = typeWrapper.createEl("label");
     typeLabel.textContent = "Tipo:";
     typeLabel.style.marginRight = "4px";
 
-    const typeSelect = typeWrapper.createEl(
-      "select"
-    ) as HTMLSelectElement;
-
+    const typeSelect = typeWrapper.createEl("select") as HTMLSelectElement;
     for (const type of ALLOWED_CHART_TYPES) {
       const opt = typeSelect.createEl("option");
       opt.value = type;
       opt.text = type;
     }
-
-    typeSelect.value = normalizeChartType(
-      this.settings.chartType
-    ) as string;
+    typeSelect.value = normalizeChartType(this.settings.chartType) as string;
 
     typeSelect.onchange = () => {
       this.settings.chartType = typeSelect.value;
@@ -244,18 +223,15 @@ export class ChartNotesBasesView extends BasesView {
 
     const makePropSelect = (
       key: keyof ChartNotesBasesSettings,
-      labelText: string
+      labelText: string,
     ) => {
-      const wrapper = this.controlsEl.createDiv(
-        "chartnotes-control"
-      );
+      const wrapper = this.controlsEl.createDiv("chartnotes-control");
+
       const label = wrapper.createEl("label");
       label.textContent = labelText;
       label.style.marginRight = "4px";
 
-      const select = wrapper.createEl(
-        "select"
-      ) as HTMLSelectElement;
+      const select = wrapper.createEl("select") as HTMLSelectElement;
 
       const emptyOpt = select.createEl("option");
       emptyOpt.value = "";
@@ -263,18 +239,19 @@ export class ChartNotesBasesView extends BasesView {
 
       for (const propId of order) {
         let display = propId;
+
         try {
           const parsed = parsePropertyId(
             propId as
               | `note.${string}`
               | `file.${string}`
-              | `formula.${string}`
+              | `formula.${string}`,
           );
           const type = (parsed as any).type ?? "";
           const name = (parsed as any).name ?? propId;
           display = type ? `${name} (${type})` : name;
         } catch {
-          // ignore
+          // parsePropertyId pode não existir no 1.9 – qualquer erro a gente ignora
         }
 
         const opt = select.createEl("option");
@@ -283,9 +260,7 @@ export class ChartNotesBasesView extends BasesView {
       }
 
       const current = (this.settings[key] ?? "") as string | null;
-      if (current) {
-        select.value = current;
-      }
+      if (current) select.value = current;
 
       select.onchange = () => {
         const value = select.value || null;
@@ -323,11 +298,10 @@ export class ChartNotesBasesView extends BasesView {
       return;
     }
 
-    const chartType = normalizeChartType(
-      this.settings.chartType
-    );
+    const chartType = normalizeChartType(this.settings.chartType);
 
     let rows: QueryResultRow[];
+
     if (chartType === "gantt") {
       rows = this.buildRowsForGantt(this.groupedData);
     } else if (chartType === "scatter") {
@@ -348,8 +322,7 @@ export class ChartNotesBasesView extends BasesView {
     const encoding = this.buildEncoding();
 
     const cfg: any = (this as any).config;
-    const viewName: string =
-      cfg?.name ?? "Chart Notes (Bases)";
+    const viewName: string = cfg?.name ?? "Chart Notes (Bases)";
 
     const spec: ChartSpec = {
       type: chartType as any,
@@ -372,12 +345,10 @@ export class ChartNotesBasesView extends BasesView {
   }
 
   // ---------------------------------------------------------------------------
-  // Helpers de propriedades / valores
+  // Helpers
   // ---------------------------------------------------------------------------
 
-  private getSelectedProp(
-    field: keyof ChartNotesBasesSettings
-  ): SelectedProp {
+  private getSelectedProp(field: keyof ChartNotesBasesSettings): SelectedProp {
     const id = this.settings[field];
     if (!id) {
       return { id: null, name: null };
@@ -385,10 +356,7 @@ export class ChartNotesBasesView extends BasesView {
 
     try {
       const parsed = parsePropertyId(
-        id as
-          | `note.${string}`
-          | `file.${string}`
-          | `formula.${string}`
+        id as `note.${string}` | `file.${string}` | `formula.${string}`,
       );
       return {
         id,
@@ -399,10 +367,7 @@ export class ChartNotesBasesView extends BasesView {
     }
   }
 
-  private readValue(
-    entry: any,
-    prop: SelectedProp
-  ): string | null {
+  private readValue(entry: any, prop: SelectedProp): string | null {
     if (!prop.id) return null;
 
     let value: any;
@@ -415,10 +380,7 @@ export class ChartNotesBasesView extends BasesView {
     if (!value) return null;
 
     try {
-      if (
-        typeof value.isEmpty === "function" &&
-        value.isEmpty()
-      ) {
+      if (typeof value.isEmpty === "function" && value.isEmpty()) {
         return null;
       }
     } catch {
@@ -439,6 +401,7 @@ export class ChartNotesBasesView extends BasesView {
     if (!raw) return null;
     const s = raw.trim();
     if (!s) return null;
+
     const d = new Date(s);
     if (!Number.isNaN(d.getTime())) return d;
     return null;
@@ -448,17 +411,12 @@ export class ChartNotesBasesView extends BasesView {
   // Builders de linhas
   // ---------------------------------------------------------------------------
 
-  private buildRowsForAggregatedCharts(
-    groups: any[]
-  ): QueryResultRow[] {
+  private buildRowsForAggregatedCharts(groups: any[]): QueryResultRow[] {
     const xProp = this.getSelectedProp("xProperty");
     const yProp = this.getSelectedProp("yProperty");
     const seriesProp = this.getSelectedProp("seriesProperty");
 
-    const byKey = new Map<
-      string,
-      QueryResultRow & { props: Record<string, any> }
-    >();
+    const byKey = new Map<string, QueryResultRow & { props: PropsRecord }>();
 
     for (const group of groups) {
       for (const entry of group.entries as any[]) {
@@ -466,9 +424,7 @@ export class ChartNotesBasesView extends BasesView {
 
         const xStr =
           this.readValue(entry, xProp) ??
-          (file?.name
-            ? String(file.name)
-            : String(file?.path ?? ""));
+          (file?.name ? String(file.name) : String(file?.path ?? ""));
 
         const yStr = this.readValue(entry, yProp);
 
@@ -481,11 +437,9 @@ export class ChartNotesBasesView extends BasesView {
         }
 
         const seriesStr = this.readValue(entry, seriesProp);
-        const series =
-          seriesStr != null ? String(seriesStr) : undefined;
+        const series = seriesStr != null ? String(seriesStr) : undefined;
 
         const key = `${xStr}@@${series ?? ""}`;
-
         let row = byKey.get(key);
         if (!row) {
           row = {
@@ -519,9 +473,7 @@ export class ChartNotesBasesView extends BasesView {
     return Array.from(byKey.values());
   }
 
-  private buildRowsForScatter(
-    groups: any[]
-  ): QueryResultRow[] {
+  private buildRowsForScatter(groups: any[]): QueryResultRow[] {
     const xProp = this.getSelectedProp("xProperty");
     const yProp = this.getSelectedProp("yProperty");
     const seriesProp = this.getSelectedProp("seriesProperty");
@@ -541,8 +493,7 @@ export class ChartNotesBasesView extends BasesView {
         if (Number.isNaN(xNum) || Number.isNaN(yNum)) continue;
 
         const seriesStr = this.readValue(entry, seriesProp);
-        const series =
-          seriesStr != null ? String(seriesStr) : undefined;
+        const series = seriesStr != null ? String(seriesStr) : undefined;
 
         const row: QueryResultRow = {
           x: xNum,
@@ -559,9 +510,7 @@ export class ChartNotesBasesView extends BasesView {
     return rows;
   }
 
-  private buildRowsForGantt(
-    groups: any[]
-  ): QueryResultRow[] {
+  private buildRowsForGantt(groups: any[]): QueryResultRow[] {
     const xProp = this.getSelectedProp("xProperty");
     const seriesProp = this.getSelectedProp("seriesProperty");
     const startProp = this.getSelectedProp("startProperty");
@@ -601,13 +550,11 @@ export class ChartNotesBasesView extends BasesView {
           !Number.isNaN(durationMinutes);
 
         const seriesStr = this.readValue(entry, seriesProp);
-        const series =
-          seriesStr != null ? String(seriesStr) : undefined;
+        const series = seriesStr != null ? String(seriesStr) : undefined;
 
         const groupVal = this.readValue(entry, groupProp);
 
-        const props: Record<string, any> = {};
-
+        const props: PropsRecord = {};
         if (durationProp.name && hasDuration) {
           props[durationProp.name] = durationMinutes;
         }
