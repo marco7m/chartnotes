@@ -252,6 +252,7 @@ export function renderGantt(
 		return s;
 	};
 
+	// limpa elementos antigos
 	Array.from(
 		container.querySelectorAll(
 			".gantt-zoom-controls, .gantt-label-floating-btn, .chart-notes-scroll, .chart-notes-details, .chart-notes-tooltip, .prop-charts-empty"
@@ -273,8 +274,9 @@ export function renderGantt(
 	}
 
 	const enc = spec.encoding as any;
-	const groupField = enc.group;
-	const durationField = enc.duration;
+	const groupField = enc.group as string | undefined;
+	const durationField = enc.duration as string | undefined;
+	const labelField = enc.label as string | undefined;
 
 	const getPropValue = (
 		props: Record<string, any> | undefined,
@@ -291,12 +293,19 @@ export function renderGantt(
 		const end = r.end as Date;
 		const props = (r as any).props as Record<string, any> | undefined;
 
-		const rawLabel =
-			typeof r.x === "string"
-				? r.x
-				: r.x instanceof Date
-				? formatDateShort(start)
-				: String(r.x);
+		let rawLabel: string;
+
+		// prioridade: encoding.label -> r.x -> fallback
+		const fromProp = labelField ? getPropValue(props, labelField) : undefined;
+		if (fromProp != null) {
+			rawLabel = String(fromProp);
+		} else if (typeof r.x === "string") {
+			rawLabel = r.x;
+		} else if (r.x instanceof Date) {
+			rawLabel = formatDateShort(start);
+		} else {
+			rawLabel = String(r.x);
+		}
 
 		const fullName = normalizeFullName(rawLabel);
 
@@ -402,14 +411,16 @@ export function renderGantt(
 		titleRow = container.createDiv({ cls: "prop-charts-title-row" });
 	}
 
+	// estado de zoom e label-mode persistidos no container
 	let zoomMode =
 		container.dataset.ganttZoomMode || String(opts.zoomMode ?? "100");
 	container.dataset.ganttZoomMode = zoomMode;
 
-	const labelModeNow =
+	let labelModeNow =
 		container.dataset.ganttLabelMode || String(opts.labelMode ?? "compact");
 	container.dataset.ganttLabelMode = labelModeNow;
 
+	// barra de zoom (sem fullscreen)
 	const zoomBar = titleRow.createDiv({ cls: "gantt-zoom-controls" });
 
 	const zoomOptions: { id: string; label: string }[] = [
@@ -532,8 +543,8 @@ export function renderGantt(
 	);
 	svg.setAttribute("height", String(height));
 
-	const plotW = width - labelColWidth - PAD_RIGHT;
 	const axisY = PAD_TOP + 6;
+	const plotW = width - labelColWidth - PAD_RIGHT;
 
 	svg.style.color = "#111111";
 
@@ -623,6 +634,7 @@ export function renderGantt(
 		svg.appendChild(todayLabel);
 	}
 
+	// botão para alternar label compacto / expandido
 	const labelToggle = inner.createEl("button", {
 		cls: "gantt-label-floating-btn",
 		text: "↔",
@@ -795,6 +807,7 @@ export function renderGantt(
 		const labelX = groupField ? 16 : 4;
 
 		if (labelModeNow === "wide") {
+			// label longo, multiline
 			drawMultilineLabel(
 				fullName,
 				labelX,
@@ -807,6 +820,7 @@ export function renderGantt(
 				handleClickTask
 			);
 		} else {
+			// label compacto
 			let compact = fullName;
 			const usableWidth = Math.max(40, labelColWidth - labelX - 8);
 			const approxCharWidth = 6;
