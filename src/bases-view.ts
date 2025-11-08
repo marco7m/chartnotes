@@ -300,45 +300,45 @@ export class ChartNotesBasesView extends BasesView {
    * - "auto" e "none": não truncam por dia → mantêm o valor original (data/hora inclusa).
    * - "day", "week", "month", "quarter", "year": agrupam de fato.
    */
-  private bucketX(rawX: string, mode: XBucket): string {
-    const d = this.parseDate(rawX);
-    if (!d) return rawX;
+private bucketX(rawX: string, mode: XBucket): string {
+  const d = this.parseDate(rawX);
+  if (!d) return rawX;
 
-    switch (mode) {
-      case "none":
-      case "auto":
-        // Não mexe → mantém a informação de hora (se houver).
-        return rawX;
+  switch (mode) {
+    case "none":
+    case "auto":
+      // Mantém data/hora original; sem arredondar para o dia.
+      // (Se quiser, depois podemos normalizar formato aqui.)
+      return rawX;
 
-      case "day": {
-        const s = this.fmtDate(
-          new Date(d.getFullYear(), d.getMonth(), d.getDate()),
-        );
-        return s;
-      }
-
-      case "week": {
-        const s = this.startOfWeek(d);
-        return `${this.fmtDate(s)} (W)`;
-      }
-
-      case "month": {
-        const m = String(d.getMonth() + 1).padStart(2, "0");
-        return `${d.getFullYear()}-${m}`;
-      }
-
-      case "quarter": {
-        const q = Math.floor(d.getMonth() / 3) + 1;
-        return `${d.getFullYear()}-Q${q}`;
-      }
-
-      case "year":
-        return `${d.getFullYear()}`;
-
-      default:
-        return rawX;
+    case "day": {
+      const onlyDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      return this.fmtDate(onlyDay);
     }
+
+    case "week": {
+      const s = this.startOfWeek(d);
+      return `${this.fmtDate(s)} (W)`;
+    }
+
+    case "month": {
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      return `${d.getFullYear()}-${m}`;
+    }
+
+    case "quarter": {
+      const q = Math.floor(d.getMonth() / 3) + 1;
+      return `${d.getFullYear()}-Q${q}`;
+    }
+
+    case "year":
+      return `${d.getFullYear()}`;
+
+    default:
+      return rawX;
   }
+}
+
 
   // ---------- X multi-valor (usado para Pie / tags) ----------
 

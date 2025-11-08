@@ -328,15 +328,19 @@
 
 
 /* Gantt – legibilidade dos rótulos (projetos/lanes) */
-.chartnotes-bases-view svg text.lane-label,
-.prop-charts-gantt svg text.lane-label {
-  font-weight: 600;
-  font-style: normal;
-  letter-spacing: 0;
-  text-transform: none;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+.chartnotes-bases-view,
+.chartnotes-bases-view * {
+  /* Garante que o texto e elementos sigam o tema,
+     mas sem forçar stroke em tudo. */
+  color: var(--text-normal);
 }
+
+/* Texto nos SVGs (e.g. labels de projetos no Gantt) */
+.chartnotes-bases-view svg text {
+  stroke: none;
+  fill: var(--text-normal);
+}
+
 
 /* Contraste por tema */
 .theme-dark .chartnotes-bases-view svg text.lane-label { fill: var(--text-normal, #d1d1d1); opacity: .95; }

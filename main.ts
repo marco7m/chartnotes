@@ -1,15 +1,14 @@
 import {
-	App,
-	MarkdownPostProcessorContext,
-	Plugin,
-	PluginManifest,
-	TFile,
-	parseYaml,
+  App,
+  MarkdownPostProcessorContext,
+  Plugin,
+  PluginManifest,
+  TFile,
+  parseYaml,
 } from "obsidian";
-
 import {
-	CHARTNOTES_BASES_VIEW_TYPE,
-	ChartNotesBasesView,
+  CHARTNOTES_BASES_VIEW_TYPE,
+  ChartNotesBasesView,
 } from "./src/bases-view";
 import { PropChartsIndexer } from "./src/indexer";
 import { PropChartsQueryEngine } from "./src/query";
@@ -17,274 +16,299 @@ import { PropChartsRenderer } from "./src/renderer";
 import type { ChartSpec } from "./src/types";
 
 export default class ChartNotesPlugin extends Plugin {
-	private indexer!: PropChartsIndexer;
-	private query!: PropChartsQueryEngine;
-	private renderer!: PropChartsRenderer;
+  private indexer!: PropChartsIndexer;
+  private query!: PropChartsQueryEngine;
+  private renderer!: PropChartsRenderer;
 
-	constructor(app: App, manifest: PluginManifest) {
-		super(app, manifest);
-	}
+  constructor(app: App, manifest: PluginManifest) {
+    super(app, manifest);
+  }
 
-	async onload() {
-		console.log("Chart Notes: loading plugin");
+  async onload() {
+    console.log("Chart Notes: loading plugin");
 
-		// Indexador
-		this.indexer = new PropChartsIndexer(this.app);
-		await this.indexer.buildIndex();
+    // -----------------------------
+    // Indexador
+    // -----------------------------
+    this.indexer = new PropChartsIndexer(this.app);
+    await this.indexer.buildIndex();
 
-		this.query = new PropChartsQueryEngine(
-			() => this.indexer.getAll(),
-			[],
-		);
+    this.query = new PropChartsQueryEngine(
+      () => this.indexer.getAll(),
+      [],
+    );
 
-		// Renderer ÚNICO (markdown + Bases)
-		this.renderer = new PropChartsRenderer();
+    // Renderer único (markdown + Bases)
+    this.renderer = new PropChartsRenderer();
 
-		// Atualização de índice
-		this.registerEvent(
-			this.app.vault.on("modify", async (file) => {
-				if (file instanceof TFile) {
-					await this.indexer.updateFile(file);
-				}
-			}),
-		);
-		this.registerEvent(
-			this.app.vault.on("create", async (file) => {
-				if (file instanceof TFile) {
-					await this.indexer.updateFile(file);
-				}
-			}),
-		);
-		this.registerEvent(
-			this.app.vault.on("delete", async (file) => {
-				if (file instanceof TFile) {
-					this.indexer.removeFile(file);
-				}
-			}),
-		);
+    // Atualização incremental do índice
+    this.registerEvent(
+      this.app.vault.on("modify", async (file) => {
+        if (file instanceof TFile) {
+          await this.indexer.updateFile(file);
+        }
+      }),
+    );
+    this.registerEvent(
+      this.app.vault.on("create", async (file) => {
+        if (file instanceof TFile) {
+          await this.indexer.updateFile(file);
+        }
+      }),
+    );
+    this.registerEvent(
+      this.app.vault.on("delete", async (file) => {
+        if (file instanceof TFile) {
+          this.indexer.removeFile(file);
+        }
+      }),
+    );
 
-		// -----------------------------------------------------------------
-		// ```chart
-		// -----------------------------------------------------------------
-		this.registerMarkdownCodeBlockProcessor(
-			"chart",
-			async (
-				src: string,
-				el: HTMLElement,
-				_ctx: MarkdownPostProcessorContext,
-			) => {
-				let spec: ChartSpec;
+    // -----------------------------------------------------------------
+    // ```chart
+    // -----------------------------------------------------------------
+    this.registerMarkdownCodeBlockProcessor(
+      "chart",
+      async (
+        src: string,
+        el: HTMLElement,
+        _ctx: MarkdownPostProcessorContext,
+      ) => {
+        let spec: ChartSpec;
 
-				try {
-					const parsed = parseYaml(src);
-					if (!parsed || typeof parsed !== "object") {
-						el.createEl("div", {
-							text: "Chart Notes: bloco vazio ou inválido.",
-						});
-						return;
-					}
-					spec = parsed as ChartSpec;
-				} catch (err: any) {
-					el.createEl("div", {
-						text: "Chart Notes: erro ao ler YAML: " + err.message,
-					});
-					return;
-				}
+        // Parse do YAML
+        try {
+          const parsed = parseYaml(src);
+          if (!parsed || typeof parsed !== "object") {
+            el.createEl("div", {
+              text: "Chart Notes: bloco vazio ou inválido.",
+            });
+            return;
+          }
+          spec = parsed as ChartSpec;
+        } catch (err: any) {
+          el.createEl("div", {
+            text:
+              "Chart Notes: erro ao ler YAML: " +
+              (err?.message ?? String(err)),
+          });
+          return;
+        }
 
-				if (!spec.type) {
-					el.createEl("div", {
-						text: "Chart Notes: 'type' obrigatório.",
-					});
-					return;
-				}
+        if (!spec.type) {
+          el.createEl("div", {
+            text: "Chart Notes: 'type' obrigatório.",
+          });
+          return;
+        }
 
-				const isGantt = spec.type === "gantt";
-				const isTable = spec.type === "table";
-				const needsXY = !isGantt && !isTable;
+        const isGantt = spec.type === "gantt";
+        const isTable = spec.type === "table";
+        const needsXY = !isGantt && !isTable;
 
-				if (needsXY) {
-					if (!spec.encoding || !spec.encoding.x) {
-						el.createEl("div", {
-							text: "Chart Notes: 'encoding.x' é obrigatório.",
-						});
-						return;
-					}
+        if (needsXY) {
+          if (!spec.encoding || !spec.encoding.x) {
+            el.createEl("div", {
+              text: "Chart Notes: 'encoding.x' é obrigatório.",
+            });
+            return;
+          }
 
-					const aggY = spec.aggregate?.y;
-					const isCount = aggY === "count";
+          const aggY = spec.aggregate?.y;
+          const isCount = aggY === "count";
 
-					if (!spec.encoding.y && !isCount) {
-						el.createEl("div", {
-							text:
-							"Chart Notes: 'encoding.y' é obrigatório (exceto quando aggregate.y = 'count').",
-						});
-						return;
-					}
-				}
+          if (!spec.encoding.y && !isCount) {
+            el.createEl("div", {
+              text:
+                "Chart Notes: 'encoding.y' é obrigatório (exceto quando aggregate.y = 'count').",
+            });
+            return;
+          }
+        }
 
-				if (!spec.encoding) spec.encoding = {};
-				if (!spec.source) spec.source = {};
+        if (!spec.encoding) spec.encoding = {};
+        if (!spec.source) spec.source = {};
 
-				let result;
-				try {
-					result = this.query.run(spec);
-				} catch (err: any) {
-					el.createEl("div", {
-						text: "Chart Notes: erro na query: " + err.message,
-					});
-					return;
-				}
+        let result;
+        try {
+          result = this.query.run(spec);
+        } catch (err: any) {
+          el.createEl("div", {
+            text:
+              "Chart Notes: erro na query: " +
+              (err?.message ?? String(err)),
+          });
+          return;
+        }
 
-				this.renderer.render(el, spec, result);
-			},
-		);
+        this.renderer.render(el, spec, result);
+      },
+    );
 
-		// -----------------------------------------------------------------
-		// Bases view (Obsidian 1.10+)
-		// -----------------------------------------------------------------
+    // -----------------------------------------------------------------
+    // Bases view (Obsidian 1.10+)
+    // -----------------------------------------------------------------
+    this.registerBasesView(CHARTNOTES_BASES_VIEW_TYPE, {
+      name: "Chart Notes",
+      icon: "lucide-chart-area",
+      factory: (controller, containerEl) =>
+        new ChartNotesBasesView(controller, containerEl, this.renderer),
+      options: () => {
+        const chartType: any = {
+          type: "dropdown",
+          key: "chartType",
+          displayName: "Chart type",
+          default: "bar",
+          options: {
+            bar: "Bar",
+            "stacked-bar": "Stacked bar",
+            line: "Line",
+            area: "Area",
+            pie: "Pie",
+            scatter: "Scatter",
+            gantt: "Gantt",
+          },
+        };
 
-		this.registerBasesView(CHARTNOTES_BASES_VIEW_TYPE, {
-			name: "Chart Notes",
-			icon: "lucide-chart-area",
+        const xProp: any = {
+          type: "property",
+          key: "xProperty",
+          // Serve pra barras, linhas, pie etc.
+          displayName: "X axis / category (bars & slices)",
+        };
 
-			factory: (controller, containerEl) =>
-				new ChartNotesBasesView(controller, containerEl, this.renderer),
+        const yProp: any = {
+          type: "property",
+          key: "yProperty",
+          displayName: "Y value (empty = count)",
+          // Em Pie isso só atrapalha
+          shouldHide: (config: any) =>
+            String(config.get("chartType") ?? "bar") === "pie",
+        };
 
-			options: () => {
-				const chartType: any = {
-					type: "dropdown",
-					key: "chartType",
-					displayName: "Chart type",
-					default: "bar",
-					options: {
-						bar: "Bar",
-						"stacked-bar": "Stacked bar",
-						line: "Line",
-						area: "Area",
-						pie: "Pie",
-						scatter: "Scatter",
-						gantt: "Gantt",
-					},
-				};
+        const seriesProp: any = {
+          type: "property",
+          key: "seriesProperty",
+          displayName: "Series / color (optional)",
+          // Em Pie a “série” só gera confusão
+          shouldHide: (config: any) =>
+            String(config.get("chartType") ?? "bar") === "pie",
+        };
 
-				const xProp: any = {
-					type: "property",
-					key: "xProperty",
-					// Nome neutro que serve pra barras, linhas e pie
-					displayName: "Category / group",
-				};
+        const aggMode: any = {
+          type: "dropdown",
+          key: "aggregateMode",
+          displayName: "Value aggregation (Y)",
+          default: "sum",
+          options: {
+            sum: "Sum",
+            count: "Count (ignore Y)",
+            "cumulative-sum": "Cumulative sum (line/area only)",
+          },
+          // Só faz sentido pra line/area
+          shouldHide: (config: any) => {
+            const t = String(config.get("chartType") ?? "bar");
+            return t !== "line" && t !== "area";
+          },
+        };
 
-				const yProp: any = {
-					type: "property",
-					key: "yProperty",
-					displayName: "Y value (empty = count)",
-					// em Pie isso só atrapalha
-					shouldHide: (config: any) =>
-						String(config.get("chartType") ?? "bar") === "pie",
-				};
+        const xBucket: any = {
+          type: "dropdown",
+          key: "xBucket",
+          displayName: "X bucketing (dates)",
+          default: "auto",
+          options: {
+            auto: "Auto (keep date/time)",
+            none: "None (raw)",
+            day: "Day",
+            week: "Week",
+            month: "Month",
+            quarter: "Quarter",
+            year: "Year",
+          },
+          shouldHide: (config: any) => {
+            const t = String(config.get("chartType") ?? "bar");
+            // Pie/Scatter/Gantt: bucket de datas não faz sentido
+            return t === "pie" || t === "scatter" || t === "gantt";
+          },
+        };
 
-				const seriesProp: any = {
-					type: "property",
-					key: "seriesProperty",
-					displayName: "Series / color (optional)",
-					// em Pie a “série” só gera confusão → some
-					shouldHide: (config: any) =>
-						String(config.get("chartType") ?? "bar") === "pie",
-				};
+        const mkGantt = (
+          key: string,
+          label: string,
+          description?: string,
+        ): any => ({
+          type: "property",
+          key,
+          displayName: label,
+          description,
+          shouldHide: (config: any) =>
+            String(config.get("chartType") ?? "") !== "gantt",
+        });
 
-				const aggMode: any = {
-					type: "dropdown",
-					key: "aggregateMode",
-					displayName: "Value mode",
-					default: "normal",
-					options: {
-						normal: "Normal (sum / count)",
-						"cumulative-sum": "Cumulative (line/area only)",
-					},
-					shouldHide: (config: any) => {
-						const t = String(config.get("chartType") ?? "bar");
-						// Só faz sentido pra line/area
-						return t !== "line" && t !== "area";
-					},
-				};
+        const startPropG = mkGantt(
+          "startProperty",
+          "Start (Gantt)",
+          "Data/hora de início. Se faltar, podemos inferir a partir de fim + duração.",
+        );
 
-				const xBucket: any = {
-					type: "dropdown",
-					key: "xBucket",
-					displayName: "X bucketing (dates)",
-					default: "auto",
-					options: {
-						auto: "Auto (date → day)",
-						none: "None",
-						day: "Day",
-						week: "Week",
-						month: "Month",
-						quarter: "Quarter",
-						year: "Year",
-					},
-					shouldHide: (config: any) => {
-						const t = String(config.get("chartType") ?? "bar");
-						// Pie/Scatter/Gantt: bucket de datas não faz sentido
-						return t === "pie" || t === "scatter" || t === "gantt";
-					},
-				};
+        const endPropG = mkGantt(
+          "endProperty",
+          "End (Gantt)",
+          "Data/hora de fim da barra (geralmente seu campo 'scheduled' ou 'finish').",
+        );
 
-				const mkGantt = (key: string, label: string): any => ({
-					type: "property",
-					key,
-					displayName: label,
-					shouldHide: (config: any) =>
-						String(config.get("chartType") ?? "") !== "gantt",
-				});
+        const duePropG = mkGantt(
+          "dueProperty",
+          "Due (deadline, optional)",
+          "Deadline. Usado como fallback quando só existe due + duração, e mostrado no tooltip.",
+        );
 
-				const startPropG = mkGantt("startProperty", "Start (Gantt)");
-				const endPropG = mkGantt("endProperty", "End (Gantt)");
-				const duePropG = mkGantt("dueProperty", "Due (optional)");
-				const scheduledPropG = mkGantt("scheduledProperty", "Scheduled (optional)");
-				const durationPropG = mkGantt(
-					"durationProperty",
-					"Duration in minutes (optional)",
-				);
-				const groupPropG = mkGantt("groupProperty", "Group / lane (optional)");
+        const durationPropG = mkGantt(
+          "durationProperty",
+          "Duration in minutes (optional)",
+          "Duração/estimativa em minutos. Usada para inferir start/end quando só um dos lados existe.",
+        );
 
-				const drilldown: any = {
-					type: "toggle",
-					key: "drilldown",
-					displayName: "Drilldown (click opens notes)",
-					default: true,
-				};
+        const groupPropG = mkGantt(
+          "groupProperty",
+          "Group / lane (optional)",
+          "Projeto/área usada como lane no lado esquerdo do Gantt.",
+        );
 
-				const title: any = {
-					type: "text",
-					key: "title",
-					displayName: "Title (optional)",
-				};
+        const drilldown: any = {
+          type: "toggle",
+          key: "drilldown",
+          displayName: "Drilldown (click opens notes)",
+          default: true,
+        };
 
-				return [
-					chartType,
-					xProp,
-					yProp,
-					seriesProp,
-					aggMode,
-					startPropG,
-					endPropG,
-					duePropG,
-					scheduledPropG,
-					durationPropG,
-					groupPropG,
-					drilldown,
-					title,
-				];
-			},
-		});
+        const title: any = {
+          type: "text",
+          key: "title",
+          displayName: "Title (optional)",
+        };
 
+        return [
+          chartType,
+          xProp,
+          yProp,
+          seriesProp,
+          aggMode,
+          xBucket,
+          startPropG,
+          endPropG,
+          duePropG,
+          durationPropG,
+          groupPropG,
+          drilldown,
+          title,
+        ];
+      },
+    });
+  }
 
-
-
-	}
-
-	onunload() {
-		console.log("Chart Notes: unloading plugin");
-	}
+  onunload() {
+    console.log("Chart Notes: unloading plugin");
+  }
 }
-
