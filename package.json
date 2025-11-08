@@ -1,6 +1,6 @@
 {
 	"name": "chartnotes",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Obsidian plugin para gráficos por properties",
 	"main": "main.js",
 	"scripts": {
