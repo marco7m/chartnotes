@@ -1,5 +1,3 @@
-// src/bases-view.ts
-
 import { BasesView, type QueryController, parsePropertyId } from "obsidian";
 import type { ChartSpec, QueryResult, QueryResultRow } from "./types";
 import type { PropChartsRenderer, RenderContext } from "./renderer";
@@ -82,29 +80,35 @@ export class ChartNotesBasesView extends BasesView {
       aggModeCfg === "cumulative-sum" && !allowCumulative ? "sum" : aggModeCfg;
 
     const rawXBucket = normalizeXBucket(cfg?.get("xBucket"));
-    // Pie / Scatter / Gantt não usam bucketing de X
     const xBucket: XBucket = isPie || isScatter || isGantt ? "none" : rawXBucket;
 
-    const xProp = this.getPropFromConfig("xProperty");
+    // X para gráficos normais / label para Gantt
+    const xPropStandard = this.getPropFromConfig("xProperty");
+    const ganttLabelProp = this.getPropFromConfig("ganttLabelProperty");
+    const xProp: SelectedProp = isGantt
+      ? ganttLabelProp.id
+        ? ganttLabelProp
+        : xPropStandard
+      : xPropStandard;
+
     const yProp = this.getPropFromConfig("yProperty");
     let seriesProp = this.getPropFromConfig("seriesProperty");
 
     if (isPie) {
-      // Em Pie, nunca usamos série – sempre agregamos só por categoria.
+      // Em Pie, série atrapalha mais do que ajuda
       seriesProp = { id: null, name: null };
     }
 
     const startProp = this.getPropFromConfig("startProperty");
     const endProp = this.getPropFromConfig("endProperty");
     const dueProp = this.getPropFromConfig("dueProperty");
-    const scheduledProp = this.getPropFromConfig("scheduledProperty");
     const durationProp = this.getPropFromConfig("durationProperty");
     const groupProp = this.getPropFromConfig("groupProperty");
 
     if (!isGantt && !xProp.id) {
       this.rootEl.createDiv({
         cls: "prop-charts-empty",
-        text: "Configure the 'Category / group' property in view options.",
+        text: "Configure the 'X axis / category' property in view options.",
       });
       return;
     }
@@ -119,11 +123,12 @@ export class ChartNotesBasesView extends BasesView {
 
     if (
       isGantt &&
-      !(startProp.id || endProp.id || scheduledProp.id || dueProp.id)
+      !(startProp.id || endProp.id || dueProp.id || durationProp.id)
     ) {
       this.rootEl.createDiv({
         cls: "prop-charts-empty",
-        text: "Gantt needs Start/End or Scheduled/Due with Duration.",
+        text:
+          "Gantt needs at least Start/End or Due/Duration configured.",
       });
       return;
     }
@@ -138,7 +143,6 @@ export class ChartNotesBasesView extends BasesView {
         startProp,
         endProp,
         dueProp,
-        scheduledProp,
         durationProp,
         groupProp,
       );
@@ -295,50 +299,43 @@ export class ChartNotesBasesView extends BasesView {
     return x;
   }
 
-  /**
-   * Bucketing de X:
-   * - "auto" e "none": não truncam por dia → mantêm o valor original (data/hora inclusa).
-   * - "day", "week", "month", "quarter", "year": agrupam de fato.
-   */
-private bucketX(rawX: string, mode: XBucket): string {
-  const d = this.parseDate(rawX);
-  if (!d) return rawX;
+  private bucketX(rawX: string, mode: XBucket): string {
+    const d = this.parseDate(rawX);
+    if (!d) return rawX;
 
-  switch (mode) {
-    case "none":
-    case "auto":
-      // Mantém data/hora original; sem arredondar para o dia.
-      // (Se quiser, depois podemos normalizar formato aqui.)
-      return rawX;
+    switch (mode) {
+      case "none":
+      case "auto":
+        // Mantém data/hora original; sem arredondar para o dia.
+        return rawX;
 
-    case "day": {
-      const onlyDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      return this.fmtDate(onlyDay);
+      case "day": {
+        const onlyDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        return this.fmtDate(onlyDay);
+      }
+
+      case "week": {
+        const s = this.startOfWeek(d);
+        return `${this.fmtDate(s)} (W)`;
+      }
+
+      case "month": {
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        return `${d.getFullYear()}-${m}`;
+      }
+
+      case "quarter": {
+        const q = Math.floor(d.getMonth() / 3) + 1;
+        return `${d.getFullYear()}-Q${q}`;
+      }
+
+      case "year":
+        return `${d.getFullYear()}`;
+
+      default:
+        return rawX;
     }
-
-    case "week": {
-      const s = this.startOfWeek(d);
-      return `${this.fmtDate(s)} (W)`;
-    }
-
-    case "month": {
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      return `${d.getFullYear()}-${m}`;
-    }
-
-    case "quarter": {
-      const q = Math.floor(d.getMonth() / 3) + 1;
-      return `${d.getFullYear()}-Q${q}`;
-    }
-
-    case "year":
-      return `${d.getFullYear()}`;
-
-    default:
-      return rawX;
   }
-}
-
 
   // ---------- X multi-valor (usado para Pie / tags) ----------
 
@@ -351,7 +348,6 @@ private bucketX(rawX: string, mode: XBucket): string {
     const values: string[] = [];
     const applyBucket = (s: string) => this.bucketX(s, xBucket);
 
-    // Se não houver property de X definida, usa nome/path do arquivo.
     if (!xProp.id) {
       const file = entry.file;
       const raw = file?.name
@@ -361,14 +357,12 @@ private bucketX(rawX: string, mode: XBucket): string {
       return values;
     }
 
-    // Caso simples: não queremos multiplicar X (barras/linhas/etc.)
     if (!multi) {
       const v = this.readValue(entry, xProp) ?? MISSING_LABEL;
       values.push(applyBucket(v));
       return values;
     }
 
-    // multi = true → tentar explodir multi-valor (tags, listas, etc.)
     let raw: any = null;
     try {
       raw = entry.getValue(xProp.id);
@@ -386,7 +380,6 @@ private bucketX(rawX: string, mode: XBucket): string {
     if (raw == null) {
       pushStr(MISSING_LABEL);
     } else if (typeof raw === "string") {
-      // Heurística para tags/strings multi: "#tag1 #tag2 ..."
       const trimmed = raw.trim();
       if (trimmed) {
         const parts = trimmed.split(/\s+/);
@@ -617,12 +610,11 @@ private bucketX(rawX: string, mode: XBucket): string {
 
   private buildRowsForGantt(
     groups: any[],
-    xProp: SelectedProp,
+    labelProp: SelectedProp,
     seriesProp: SelectedProp,
     startProp: SelectedProp,
     endProp: SelectedProp,
     dueProp: SelectedProp,
-    scheduledProp: SelectedProp,
     durationProp: SelectedProp,
     groupProp: SelectedProp,
   ): QueryResultRow[] {
@@ -637,23 +629,20 @@ private bucketX(rawX: string, mode: XBucket): string {
         const startStr = this.readValue(entry, startProp);
         const endStr = this.readValue(entry, endProp);
         const dueStr = this.readValue(entry, dueProp);
-        const scheduledStr = this.readValue(entry, scheduledProp);
         const durationStr = this.readValue(entry, durationProp);
 
         const durationMin = durationStr != null ? Number(durationStr) : NaN;
         const hasDuration = Number.isFinite(durationMin) && durationMin > 0;
+        const durMs = hasDuration ? durationMin * 60_000 : DEFAULT_BLOCK_MS;
 
         const explicitStart = this.parseDate(startStr);
         const explicitEnd = this.parseDate(endStr);
         const due = this.parseDate(dueStr);
-        const scheduled = this.parseDate(scheduledStr);
 
         let start: Date | null = explicitStart;
         let end: Date | null = explicitEnd;
 
-        const durMs = hasDuration ? durationMin * 60_000 : DEFAULT_BLOCK_MS;
-
-        // 1. Caso completo: start + end → usa direto
+        // 1. Start + End → usa direto
         if (start && end) {
           // ok
         }
@@ -661,45 +650,33 @@ private bucketX(rawX: string, mode: XBucket): string {
         else if (start && hasDuration && !end) {
           end = new Date(start.getTime() + durMs);
         }
-        // 3. Sem start, mas Scheduled + duração → Scheduled é o fim; start = scheduled - duração
-        else if (!start && scheduled && hasDuration && !end) {
-          end = scheduled;
-          start = new Date(scheduled.getTime() - durMs);
+        // 3. Sem start, End + duração → start = end - duração
+        else if (!start && end && hasDuration) {
+          start = new Date(end.getTime() - durMs);
         }
-        // 4. Sem start/scheduled, mas Due + duração → Due é o fim; start = due - duração
-        else if (!start && !scheduled && due && hasDuration && !end) {
+        // 4. Sem start/end, Due + duração → trata Due como fim
+        else if (!start && !end && due && hasDuration) {
           end = due;
           start = new Date(due.getTime() - durMs);
         }
-        // 5. Sem start/end, só Scheduled (sem duração) → bloco curto começando em Scheduled
-        else if (!start && !end && scheduled && !hasDuration) {
-          start = scheduled;
-          end = new Date(scheduled.getTime() + DEFAULT_BLOCK_MS);
-        }
-        // 6. Start sozinho (sem end/duração) → bloco curto a partir de start
+        // 5. Só Start → bloco curto
         else if (start && !end && !hasDuration) {
           end = new Date(start.getTime() + DEFAULT_BLOCK_MS);
         }
-        // 7. Só Due (sem start/scheduled/end/duração) → marco curto em Due
+        // 6. Só End → bloco curto
+        else if (!start && end && !hasDuration) {
+          start = new Date(end.getTime() - DEFAULT_BLOCK_MS);
+        }
+        // 7. Só Due → bloco curto (milestone)
         else if (!start && !end && due && !hasDuration) {
           start = due;
           end = new Date(due.getTime() + DEFAULT_BLOCK_MS);
         }
-        // 8. Só end + duração → start = end - duração
-        else if (!start && end && hasDuration) {
-          start = new Date(end.getTime() - durMs);
-        }
-        // 9. Só end (sem duração) → bloco curto terminando em end
-        else if (!start && end && !hasDuration) {
-          start = new Date(end.getTime() - DEFAULT_BLOCK_MS);
-        }
 
         if (!start || !end) {
-          // Não foi possível determinar um intervalo coerente.
           continue;
         }
 
-        // Garante que start <= end
         if (start.getTime() > end.getTime()) {
           const tmp = start;
           start = end;
@@ -707,7 +684,7 @@ private bucketX(rawX: string, mode: XBucket): string {
         }
 
         const label =
-          this.readValue(entry, xProp) ??
+          this.readValue(entry, labelProp) ??
           (file?.name
             ? String(file.name).replace(/\.md$/i, "")
             : String(file?.path ?? ""));
@@ -717,11 +694,8 @@ private bucketX(rawX: string, mode: XBucket): string {
         const groupVal = this.readValue(entry, groupProp);
 
         const props: PropsMap = {};
-
-        // Preenche props pra tooltip/edição no Gantt
         if (startProp.name && start) props[startProp.name] = start;
         if (endProp.name && end) props[endProp.name] = end;
-        if (scheduledProp.name && scheduled) props[scheduledProp.name] = scheduled;
         if (dueProp.name && due) props[dueProp.name] = due;
         if (hasDuration && durationProp.name) props[durationProp.name] = durationMin;
         if (groupProp.name && groupVal != null) props[groupProp.name] = groupVal;
@@ -738,6 +712,12 @@ private bucketX(rawX: string, mode: XBucket): string {
         });
       }
     }
+
+    // Ordena tarefas por início (dentro do renderer elas já ficam em ordem de tempo)
+    rows.sort((a, b) => {
+      if (!a.start || !b.start) return 0;
+      return a.start.getTime() - b.start.getTime();
+    });
 
     return rows;
   }
@@ -757,9 +737,6 @@ private bucketX(rawX: string, mode: XBucket): string {
     xBucket: XBucket;
     chartType: AllowedChartType;
   }): any {
-    // IMPORTANTE: x/y aqui são nomes de propriedades,
-    // não rótulos bonitinhos. O renderer usa isso pra procurar
-    // os campos nos dados. O label humano fica por conta dele.
     const xKey = fields.x.name ?? "x";
     const yKey = fields.y.name ?? "y";
 

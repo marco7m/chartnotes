@@ -173,17 +173,29 @@ export default class ChartNotesPlugin extends Plugin {
         const xProp: any = {
           type: "property",
           key: "xProperty",
-          // Serve pra barras, linhas, pie etc.
           displayName: "X axis / category (bars & slices)",
+          shouldHide: (config: any) =>
+            String(config.get("chartType") ?? "bar") === "gantt",
+        };
+
+        const ganttLabelProp: any = {
+          type: "property",
+          key: "ganttLabelProperty",
+          displayName: "Task label (Gantt)",
+          description:
+            "Texto mostrado em cada tarefa. Se vazio, usa o nome da nota.",
+          shouldHide: (config: any) =>
+            String(config.get("chartType") ?? "bar") !== "gantt",
         };
 
         const yProp: any = {
           type: "property",
           key: "yProperty",
           displayName: "Y value (empty = count)",
-          // Em Pie isso só atrapalha
-          shouldHide: (config: any) =>
-            String(config.get("chartType") ?? "bar") === "pie",
+          shouldHide: (config: any) => {
+            const t = String(config.get("chartType") ?? "bar");
+            return t === "pie" || t === "gantt";
+          },
         };
 
         const seriesProp: any = {
@@ -205,7 +217,6 @@ export default class ChartNotesPlugin extends Plugin {
             count: "Count (ignore Y)",
             "cumulative-sum": "Cumulative sum (line/area only)",
           },
-          // Só faz sentido pra line/area
           shouldHide: (config: any) => {
             const t = String(config.get("chartType") ?? "bar");
             return t !== "line" && t !== "area";
@@ -228,7 +239,6 @@ export default class ChartNotesPlugin extends Plugin {
           },
           shouldHide: (config: any) => {
             const t = String(config.get("chartType") ?? "bar");
-            // Pie/Scatter/Gantt: bucket de datas não faz sentido
             return t === "pie" || t === "scatter" || t === "gantt";
           },
         };
@@ -249,25 +259,25 @@ export default class ChartNotesPlugin extends Plugin {
         const startPropG = mkGantt(
           "startProperty",
           "Start (Gantt)",
-          "Data/hora de início. Se faltar, podemos inferir a partir de fim + duração.",
+          "Data/hora de início. Se faltar, tentamos inferir via fim + duração.",
         );
 
         const endPropG = mkGantt(
           "endProperty",
           "End (Gantt)",
-          "Data/hora de fim da barra (geralmente seu campo 'scheduled' ou 'finish').",
+          "Data/hora de fim da barra (geralmente 'scheduled' ou 'finish').",
         );
 
         const duePropG = mkGantt(
           "dueProperty",
           "Due (deadline, optional)",
-          "Deadline. Usado como fallback quando só existe due + duração, e mostrado no tooltip.",
+          "Deadline. Usado como fallback quando há due + duração, e mostrado no tooltip.",
         );
 
         const durationPropG = mkGantt(
           "durationProperty",
           "Duration in minutes (optional)",
-          "Duração/estimativa em minutos. Usada para inferir start/end quando só um dos lados existe.",
+          "Estimativa em minutos. Usada para inferir start/end quando só um dos lados existe.",
         );
 
         const groupPropG = mkGantt(
@@ -292,6 +302,7 @@ export default class ChartNotesPlugin extends Plugin {
         return [
           chartType,
           xProp,
+          ganttLabelProp,
           yProp,
           seriesProp,
           aggMode,
@@ -312,3 +323,4 @@ export default class ChartNotesPlugin extends Plugin {
     console.log("Chart Notes: unloading plugin");
   }
 }
+
