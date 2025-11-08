@@ -1,11 +1,4 @@
-import {
-  App,
-  MarkdownPostProcessorContext,
-  Plugin,
-  PluginManifest,
-  TFile,
-  parseYaml,
-} from "obsidian";
+import { App, Plugin, PluginManifest, TFile } from "obsidian";
 import {
   CHARTNOTES_BASES_VIEW_TYPE,
   ChartNotesBasesView,
@@ -13,7 +6,6 @@ import {
 import { PropChartsIndexer } from "./src/indexer";
 import { PropChartsQueryEngine } from "./src/query";
 import { PropChartsRenderer } from "./src/renderer";
-import type { ChartSpec } from "./src/types";
 
 export default class ChartNotesPlugin extends Plugin {
   private indexer!: PropChartsIndexer;
@@ -25,10 +17,10 @@ export default class ChartNotesPlugin extends Plugin {
   }
 
   async onload() {
-    console.log("Chart Notes: loading plugin");
+    console.log("Chart Notes: loading plugin (Bases-only)");
 
     // -----------------------------
-    // Indexador
+    // Indexador das notas
     // -----------------------------
     this.indexer = new PropChartsIndexer(this.app);
     await this.indexer.buildIndex();
@@ -38,7 +30,7 @@ export default class ChartNotesPlugin extends Plugin {
       [],
     );
 
-    // Renderer único (markdown + Bases)
+    // Renderer compartilhado (apenas Bases agora)
     this.renderer = new PropChartsRenderer();
 
     // Atualização incremental do índice
@@ -62,87 +54,6 @@ export default class ChartNotesPlugin extends Plugin {
           this.indexer.removeFile(file);
         }
       }),
-    );
-
-    // -----------------------------------------------------------------
-    // ```chart
-    // -----------------------------------------------------------------
-    this.registerMarkdownCodeBlockProcessor(
-      "chart",
-      async (
-        src: string,
-        el: HTMLElement,
-        _ctx: MarkdownPostProcessorContext,
-      ) => {
-        let spec: ChartSpec;
-
-        // Parse do YAML
-        try {
-          const parsed = parseYaml(src);
-          if (!parsed || typeof parsed !== "object") {
-            el.createEl("div", {
-              text: "Chart Notes: bloco vazio ou inválido.",
-            });
-            return;
-          }
-          spec = parsed as ChartSpec;
-        } catch (err: any) {
-          el.createEl("div", {
-            text:
-              "Chart Notes: erro ao ler YAML: " +
-              (err?.message ?? String(err)),
-          });
-          return;
-        }
-
-        if (!spec.type) {
-          el.createEl("div", {
-            text: "Chart Notes: 'type' obrigatório.",
-          });
-          return;
-        }
-
-        const isGantt = spec.type === "gantt";
-        const isTable = spec.type === "table";
-        const needsXY = !isGantt && !isTable;
-
-        if (needsXY) {
-          if (!spec.encoding || !spec.encoding.x) {
-            el.createEl("div", {
-              text: "Chart Notes: 'encoding.x' é obrigatório.",
-            });
-            return;
-          }
-
-          const aggY = spec.aggregate?.y;
-          const isCount = aggY === "count";
-
-          if (!spec.encoding.y && !isCount) {
-            el.createEl("div", {
-              text:
-                "Chart Notes: 'encoding.y' é obrigatório (exceto quando aggregate.y = 'count').",
-            });
-            return;
-          }
-        }
-
-        if (!spec.encoding) spec.encoding = {};
-        if (!spec.source) spec.source = {};
-
-        let result;
-        try {
-          result = this.query.run(spec);
-        } catch (err: any) {
-          el.createEl("div", {
-            text:
-              "Chart Notes: erro na query: " +
-              (err?.message ?? String(err)),
-          });
-          return;
-        }
-
-        this.renderer.render(el, spec, result);
-      },
     );
 
     // -----------------------------------------------------------------
@@ -202,7 +113,6 @@ export default class ChartNotesPlugin extends Plugin {
           type: "property",
           key: "seriesProperty",
           displayName: "Series / color (optional)",
-          // Em Pie a “série” só gera confusão
           shouldHide: (config: any) =>
             String(config.get("chartType") ?? "bar") === "pie",
         };

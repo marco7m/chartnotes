@@ -607,123 +607,130 @@ export class ChartNotesBasesView extends BasesView {
   }
 
   // ---------- Gantt ----------
+private buildRowsForGantt(
+  groups: any[],
+  labelProp: SelectedProp,
+  seriesProp: SelectedProp,
+  startProp: SelectedProp,
+  endProp: SelectedProp,
+  dueProp: SelectedProp,
+  durationProp: SelectedProp,
+  groupProp: SelectedProp,
+): QueryResultRow[] {
+  const rows: QueryResultRow[] = [];
+  const DEFAULT_BLOCK_MINUTES = 60;
+  const DEFAULT_BLOCK_MS = DEFAULT_BLOCK_MINUTES * 60_000;
 
-  private buildRowsForGantt(
-    groups: any[],
-    labelProp: SelectedProp,
-    seriesProp: SelectedProp,
-    startProp: SelectedProp,
-    endProp: SelectedProp,
-    dueProp: SelectedProp,
-    durationProp: SelectedProp,
-    groupProp: SelectedProp,
-  ): QueryResultRow[] {
-    const rows: QueryResultRow[] = [];
-    const DEFAULT_BLOCK_MINUTES = 60;
-    const DEFAULT_BLOCK_MS = DEFAULT_BLOCK_MINUTES * 60_000;
+  for (const group of groups) {
+    for (const entry of group.entries as any[]) {
+      const file = entry.file;
 
-    for (const group of groups) {
-      for (const entry of group.entries as any[]) {
-        const file = entry.file;
+      const startStr = this.readValue(entry, startProp);
+      const endStr = this.readValue(entry, endProp);
+      const dueStr = this.readValue(entry, dueProp);
+      const durationStr = this.readValue(entry, durationProp);
 
-        const startStr = this.readValue(entry, startProp);
-        const endStr = this.readValue(entry, endProp);
-        const dueStr = this.readValue(entry, dueProp);
-        const durationStr = this.readValue(entry, durationProp);
+      const durationMin = durationStr != null ? Number(durationStr) : NaN;
+      const hasDuration = Number.isFinite(durationMin) && durationMin > 0;
+      const durMs = hasDuration ? durationMin * 60_000 : DEFAULT_BLOCK_MS;
 
-        const durationMin = durationStr != null ? Number(durationStr) : NaN;
-        const hasDuration = Number.isFinite(durationMin) && durationMin > 0;
-        const durMs = hasDuration ? durationMin * 60_000 : DEFAULT_BLOCK_MS;
+      const explicitStart = this.parseDate(startStr);
+      const explicitEnd = this.parseDate(endStr);
+      const due = this.parseDate(dueStr);
 
-        const explicitStart = this.parseDate(startStr);
-        const explicitEnd = this.parseDate(endStr);
-        const due = this.parseDate(dueStr);
+      let start: Date | null = explicitStart;
+      let end: Date | null = explicitEnd;
 
-        let start: Date | null = explicitStart;
-        let end: Date | null = explicitEnd;
-
-        // 1. Start + End → usa direto
-        if (start && end) {
-          // ok
-        }
-        // 2. Start + duração → end = start + duração
-        else if (start && hasDuration && !end) {
-          end = new Date(start.getTime() + durMs);
-        }
-        // 3. Sem start, End + duração → start = end - duração
-        else if (!start && end && hasDuration) {
-          start = new Date(end.getTime() - durMs);
-        }
-        // 4. Sem start/end, Due + duração → trata Due como fim
-        else if (!start && !end && due && hasDuration) {
-          end = due;
-          start = new Date(due.getTime() - durMs);
-        }
-        // 5. Só Start → bloco curto
-        else if (start && !end && !hasDuration) {
-          end = new Date(start.getTime() + DEFAULT_BLOCK_MS);
-        }
-        // 6. Só End → bloco curto
-        else if (!start && end && !hasDuration) {
-          start = new Date(end.getTime() - DEFAULT_BLOCK_MS);
-        }
-        // 7. Só Due → bloco curto (milestone)
-        else if (!start && !end && due && !hasDuration) {
-          start = due;
-          end = new Date(due.getTime() + DEFAULT_BLOCK_MS);
-        }
-
-        if (!start || !end) {
-          continue;
-        }
-
-        if (start.getTime() > end.getTime()) {
-          const tmp = start;
-          start = end;
-          end = tmp;
-        }
-
-        const label =
-          this.readValue(entry, labelProp) ??
-          (file?.name
-            ? String(file.name).replace(/\.md$/i, "")
-            : String(file?.path ?? ""));
-
-        const seriesStr = this.readValue(entry, seriesProp);
-        const series = seriesStr != null ? String(seriesStr) : undefined;
-        const groupVal = this.readValue(entry, groupProp);
-
-        const props: PropsMap = {};
-        if (startProp.name && start) props[startProp.name] = start;
-        if (endProp.name && end) props[endProp.name] = end;
-        if (dueProp.name && due) props[dueProp.name] = due;
-        if (hasDuration && durationProp.name) props[durationProp.name] = durationMin;
-        if (groupProp.name && groupVal != null) props[groupProp.name] = groupVal;
-
-        rows.push({
-          x: label,
-          y: 0,
-          series,
-          start,
-          end,
-          due: due ?? undefined,
-          notes: file?.path ? [file.path] : [],
-          props,
-        });
+      // 1. Start + End → usa direto
+      if (start && end) {
+        // ok
       }
+      // 2. Start + duração → end = start + duração
+      else if (start && hasDuration && !end) {
+        end = new Date(start.getTime() + durMs);
+      }
+      // 3. Sem start, End + duração → start = end - duração
+      else if (!start && end && hasDuration) {
+        start = new Date(end.getTime() - durMs);
+      }
+      // 4. Sem start/end, Due + duração → trata Due como fim
+      else if (!start && !end && due && hasDuration) {
+        end = due;
+        start = new Date(due.getTime() - durMs);
+      }
+      // 5. Só Start → bloco curto
+      else if (start && !end && !hasDuration) {
+        end = new Date(start.getTime() + DEFAULT_BLOCK_MS);
+      }
+      // 6. Só End → bloco curto
+      else if (!start && end && !hasDuration) {
+        start = new Date(end.getTime() - DEFAULT_BLOCK_MS);
+      }
+      // 7. Só Due → bloco curto (milestone)
+      else if (!start && !end && due && !hasDuration) {
+        start = due;
+        end = new Date(due.getTime() + DEFAULT_BLOCK_MS);
+      }
+
+      if (!start || !end) {
+        continue;
+      }
+
+      if (start.getTime() > end.getTime()) {
+        const tmp = start;
+        start = end;
+        end = tmp;
+      }
+
+      // Label configurável: Task label (Gantt)
+      const label =
+        this.readValue(entry, labelProp) ??
+        (file?.name
+          ? String(file.name).replace(/\.md$/i, "")
+          : String(file?.path ?? ""));
+
+      const seriesStr = this.readValue(entry, seriesProp);
+      const series = seriesStr != null ? String(seriesStr) : undefined;
+      const groupVal = this.readValue(entry, groupProp);
+
+      const props: PropsMap = {};
+
+      // Label disponível em props também, pra tooltip/renderer
+      if (labelProp.name) {
+        props[labelProp.name] = label;
+      }
+      // chave genérica pra facilitar uso no renderer
+      props["label"] = label;
+
+      if (startProp.name && start) props[startProp.name] = start;
+      if (endProp.name && end) props[endProp.name] = end;
+      if (dueProp.name && due) props[dueProp.name] = due;
+      if (hasDuration && durationProp.name) props[durationProp.name] = durationMin;
+      if (groupProp.name && groupVal != null) props[groupProp.name] = groupVal;
+
+      rows.push({
+        x: label,
+        y: 0,
+        series,
+        start,
+        end,
+        due: due ?? undefined,
+        notes: file?.path ? [file.path] : [],
+        props,
+      });
     }
-
-    // Ordena tarefas por início (dentro do renderer elas já ficam em ordem de tempo)
-    rows.sort((a, b) => {
-      if (!a.start || !b.start) return 0;
-      return a.start.getTime() - b.start.getTime();
-    });
-
-    return rows;
   }
 
-  // ---------- encoding ----------
+  // Ordena tarefas por início
+  rows.sort((a, b) => {
+    if (!a.start || !b.start) return 0;
+    return a.start.getTime() - b.start.getTime();
+  });
 
+  return rows;
+}
+
+  // ---------- encoding ----------
   private buildEncoding(fields: {
     x: SelectedProp;
     y: SelectedProp;
@@ -740,7 +747,7 @@ export class ChartNotesBasesView extends BasesView {
     const xKey = fields.x.name ?? "x";
     const yKey = fields.y.name ?? "y";
 
-    return {
+    const encoding: any = {
       x: xKey,
       y: yKey,
       series: fields.series.name ?? "series",
@@ -750,6 +757,14 @@ export class ChartNotesBasesView extends BasesView {
       duration: fields.duration.name ?? "duration",
       group: fields.group.name ?? "group",
     };
+
+    // Para Gantt, o label vem explicitamente do "Task label (Gantt)"
+    if (fields.chartType === "gantt") {
+      encoding.label = fields.x.name ?? "label";
+    }
+
+    return encoding;
   }
+
 }
 

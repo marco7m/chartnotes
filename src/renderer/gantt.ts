@@ -432,20 +432,6 @@ export function renderGantt(
 		});
 	});
 
-	const fullBtn = zoomBar.createEl("button", {
-		cls: "gantt-zoom-btn gantt-fullscreen-btn",
-		text: "⤢",
-	});
-	fullBtn.addEventListener("click", (ev: MouseEvent) => {
-		ev.preventDefault();
-		const zoomTrigger = container.querySelector(
-			".chart-notes-zoom-button"
-		) as HTMLElement | null;
-		if (zoomTrigger) {
-			zoomTrigger.click();
-		}
-	});
-
 	const baseLabelWidthRaw = Number(opts.labelWidth);
 	const baseLabelWidth =
 		!Number.isNaN(baseLabelWidthRaw) && baseLabelWidthRaw > 120
