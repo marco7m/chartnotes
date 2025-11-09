@@ -128,7 +128,7 @@ export class ChartNotesBasesView extends BasesView {
 
 		if (
 			isGantt &&
-			!(startProp.id || endProp.id || scheduledProp.id || dueProp.id)
+				!(startProp.id || endProp.id || scheduledProp.id || dueProp.id)
 		) {
 			this.rootEl.createDiv({
 				cls: "prop-charts-empty",
@@ -143,8 +143,8 @@ export class ChartNotesBasesView extends BasesView {
 			isGantt && ganttLabelProp.id
 				? ganttLabelProp
 				: isGantt
-				? xProp
-				: { id: null, name: null };
+					? xProp
+					: { id: null, name: null };
 
 		let rows: QueryResultRow[];
 
@@ -462,8 +462,8 @@ export class ChartNotesBasesView extends BasesView {
 
 		const treatAsCount =
 			forceCount ||
-			aggMode === "count" ||
-			(!yProp.id && aggMode !== "sum");
+				aggMode === "count" ||
+				(!yProp.id && aggMode !== "sum");
 
 		const yPropName = yProp.name || "y";
 
@@ -608,164 +608,198 @@ export class ChartNotesBasesView extends BasesView {
 		return rows;
 	}
 
-// ---------- Gantt ----------
-private buildRowsForGantt(
-  groups: any[],
-  labelPropFromCall: SelectedProp,
-  seriesProp: SelectedProp,
-  startProp: SelectedProp,
-  endProp: SelectedProp,
-  dueProp: SelectedProp,
-  scheduledProp: SelectedProp,
-  durationProp: SelectedProp,
-  groupProp: SelectedProp,
-): QueryResultRow[] {
-  const rows: QueryResultRow[] = [];
+	// ---------- Gantt ----------
+	private buildRowsForGantt(
+		groups: any[],
+		labelPropFromCall: SelectedProp,
+		seriesProp: SelectedProp,
+		startProp: SelectedProp,
+		endProp: SelectedProp,
+		dueProp: SelectedProp,
+		scheduledProp: SelectedProp,
+		durationProp: SelectedProp,
+		groupProp: SelectedProp, // compatibilidade com views antigas
+	): QueryResultRow[] {
+		const rows: QueryResultRow[] = [];
 
-  const DEFAULT_BLOCK_MINUTES = 60;
-  const DEFAULT_BLOCK_MS = DEFAULT_BLOCK_MINUTES * 60_000;
+		const DEFAULT_BLOCK_MINUTES = 60;
+		const DEFAULT_BLOCK_MS = DEFAULT_BLOCK_MINUTES * 60_000;
 
-  // Task label (Gantt) configurado na view tem prioridade.
-  let labelProp: SelectedProp = labelPropFromCall;
-  try {
-    const ganttLabel = this.getPropFromConfig("ganttLabelProperty");
-    if (ganttLabel && ganttLabel.id) {
-      labelProp = ganttLabel;
-    }
-  } catch {
-    // se der qualquer erro, usamos o labelPropFromCall mesmo
-  }
+		const groupNameOf = (g: any): string => {
+			const cands = [
+				g?.label,
+				g?.name,
+				g?.value,
+				g?.key,
+				g?.group,
+				g?.groupLabel,
+			];
+			for (const c of cands) {
+				if (c != null && String(c).trim() !== "") return String(c);
+			}
+			// sem agrupamento no Bases
+			return "";
+		};
 
-  for (const group of groups) {
-    for (const entry of group.entries as any[]) {
-      const file = entry.file;
+		// Task label configurada na view (ganttLabelProperty) tem prioridade
+		let labelProp: SelectedProp = labelPropFromCall;
+		try {
+			const ganttLabel = this.getPropFromConfig("ganttLabelProperty");
+			if (ganttLabel && ganttLabel.id) {
+				labelProp = ganttLabel;
+			}
+		} catch {
+			// ignora e segue com labelPropFromCall
+		}
 
-      const startStr = this.readValue(entry, startProp);
-      const endStr = this.readValue(entry, endProp);
-      const dueStr = this.readValue(entry, dueProp);
-      const scheduledStr = this.readValue(entry, scheduledProp);
-      const durationStr = this.readValue(entry, durationProp);
+		const hasManualGroupProp = !!groupProp.id;
 
-      const durationMin = durationStr != null ? Number(durationStr) : NaN;
-      const hasDuration = Number.isFinite(durationMin) && durationMin > 0;
-      const durMs = hasDuration ? durationMin * 60_000 : DEFAULT_BLOCK_MS;
+		for (const group of groups) {
+			const groupName = groupNameOf(group); // "" quando Bases não agrupa
 
-      const explicitStart = this.parseDate(startStr);
-      const explicitEnd = this.parseDate(endStr);
-      const due = this.parseDate(dueStr);
-      const scheduled = this.parseDate(scheduledStr);
+			for (const entry of (group.entries ?? []) as any[]) {
+				const file = entry.file;
 
-      let start: Date | null = explicitStart;
-      let end: Date | null = explicitEnd;
+				const startStr = this.readValue(entry, startProp);
+				const endStr = this.readValue(entry, endProp);
+				const dueStr = this.readValue(entry, dueProp);
+				const scheduledStr = this.readValue(entry, scheduledProp);
+				const durationStr = this.readValue(entry, durationProp);
 
-      // 1. Start + End -> usa direto
-      if (start && end) {
-        // ok
-      } else {
-        // 2. Sem start/end, mas com scheduled
-        if (!start && !end && scheduled) {
-          if (hasDuration) {
-            end = scheduled;
-            start = new Date(scheduled.getTime() - durMs);
-          } else {
-            start = scheduled;
-            end = new Date(scheduled.getTime() + DEFAULT_BLOCK_MS);
-          }
-        }
+				const durationMin = durationStr != null ? Number(durationStr) : NaN;
+				const hasDuration = Number.isFinite(durationMin) && durationMin > 0;
+				const durMs = hasDuration ? durationMin * 60_000 : DEFAULT_BLOCK_MS;
 
-        // 3. Sem start/end/scheduled, mas com due
-        if ((!start || !end) && !scheduled && due) {
-          if (hasDuration) {
-            end = due;
-            start = new Date(due.getTime() - durMs);
-          } else if (!start && !end) {
-            start = due;
-            end = new Date(due.getTime() + DEFAULT_BLOCK_MS);
-          }
-        }
+				const explicitStart = this.parseDate(startStr);
+				const explicitEnd = this.parseDate(endStr);
+				const due = this.parseDate(dueStr);
+				const scheduled = this.parseDate(scheduledStr);
 
-        // 4. Start + duração (sem end)
-        if ((!start || !end) && explicitStart && hasDuration && !explicitEnd) {
-          start = explicitStart;
-          end = new Date(explicitStart.getTime() + durMs);
-        }
+				let start = explicitStart;
+				let end = explicitEnd;
 
-        // 5. End + duração (sem start)
-        if ((!start || !end) && explicitEnd && hasDuration && !explicitStart) {
-          end = explicitEnd;
-          start = new Date(explicitEnd.getTime() - durMs);
-        }
+				// 1) Start + End já definidos
+				if (!start || !end) {
+					// 2) Sem start/end, mas com scheduled
+					if (!start && !end && scheduled) {
+						if (hasDuration) {
+							end = scheduled;
+							start = new Date(scheduled.getTime() - durMs);
+						} else {
+							start = scheduled;
+							end = new Date(scheduled.getTime() + DEFAULT_BLOCK_MS);
+						}
+					}
 
-        // 6. Só start -> bloco curto
-        if (start && !end && !hasDuration) {
-          end = new Date(start.getTime() + DEFAULT_BLOCK_MS);
-        }
+					// 3) Sem start/end, sem scheduled, mas com due
+					if ((!start || !end) && !scheduled && due) {
+						if (hasDuration) {
+							end = due;
+							start = new Date(due.getTime() - durMs);
+						} else if (!start && !end) {
+							start = due;
+							end = new Date(due.getTime() + DEFAULT_BLOCK_MS);
+						}
+					}
 
-        // 7. Só end -> bloco curto
-        if (!start && end && !hasDuration) {
-          start = new Date(end.getTime() - DEFAULT_BLOCK_MS);
-        }
-      }
+					// 4) Start + duração (sem end)
+					if ((!start || !end) && explicitStart && hasDuration && !explicitEnd) {
+						start = explicitStart;
+						end = new Date(explicitStart.getTime() + durMs);
+					}
 
-      // Não conseguiu intervalo válido -> ignora
-      if (!start || !end) continue;
+					// 5) End + duração (sem start)
+					if ((!start || !end) && explicitEnd && hasDuration && !explicitStart) {
+						end = explicitEnd;
+						start = new Date(explicitEnd.getTime() - durMs);
+					}
 
-      // Garante start <= end
-      if (start.getTime() > end.getTime()) {
-        const tmp = start;
-        start = end;
-        end = tmp;
-      }
+					// 6) Só start -> bloco curto
+					if (start && !end && !hasDuration) {
+						end = new Date(start.getTime() + DEFAULT_BLOCK_MS);
+					}
 
-      // ---- LABEL: Task label (Gantt) ----
-      const label =
-        this.readValue(entry, labelProp) ??
-        (file?.name
-          ? String(file.name).replace(/\.md$/i, "")
-          : String(file?.path ?? ""));
+					// 7) Só end -> bloco curto
+					if (!start && end && !hasDuration) {
+						start = new Date(end.getTime() - DEFAULT_BLOCK_MS);
+					}
+				}
 
-      const seriesStr = this.readValue(entry, seriesProp);
-      const series = seriesStr != null ? String(seriesStr) : undefined;
+				if (!start || !end) continue;
 
-      const groupVal = this.readValue(entry, groupProp);
+				// garante start <= end
+				if (start.getTime() > end.getTime()) {
+					const tmp = start;
+					start = end;
+					end = tmp;
+				}
 
-      const props: PropsMap = {};
+				// -------- label ----------
+				let label = this.readValue(entry, labelProp);
 
-      // label disponível em props também
-      if (labelProp.name) {
-        props[labelProp.name] = label;
-      }
-      props["label"] = label;
+				if (label == null || String(label).trim() === "") {
+					if (file?.name) {
+						label = String(file.name).replace(/\.md$/i, "");
+					} else if (file?.path) {
+						label = String(file.path);
+					} else {
+						label = "(sem título)";
+					}
+				}
 
-      if (startProp.name && start) props[startProp.name] = start;
-      if (endProp.name && end) props[endProp.name] = end;
-      if (dueProp.name && due) props[dueProp.name] = due;
-      if (scheduledProp.name && scheduled) props[scheduledProp.name] = scheduled;
-      if (hasDuration && durationProp.name) props[durationProp.name] = durationMin;
-      if (groupProp.name && groupVal != null) props[groupProp.name] = groupVal;
+				// série (cores / legenda)
+				const seriesVal = this.readValue(entry, seriesProp);
+				const series = seriesVal != null ? String(seriesVal) : undefined;
 
-      rows.push({
-        x: label, // o Gantt usa r.x como texto base
-        y: 0,
-        series,
-        start,
-        end,
-        due: due ?? undefined,
-        notes: file?.path ? [file.path] : [],
-        props,
-      });
-    }
-  }
+				const props: Record<string, any> = {};
 
-  // Ordena visualmente por início
-  rows.sort((a, b) => {
-    if (!a.start || !b.start) return 0;
-    return a.start.getTime() - b.start.getTime();
-  });
+				// Agrupamento vindo do Bases
+				if (groupName) {
+					props["__basesGroup"] = groupName;
+				}
 
-  return rows;
-}
+				// Compatibilidade com Group property antigo (se ainda estiver configurado)
+				if (hasManualGroupProp) {
+					const gVal = this.readValue(entry, groupProp);
+					if (gVal != null && groupProp.name) {
+						props[groupProp.name] = gVal;
+					}
+				}
 
+				if (labelProp.name) props[labelProp.name] = label;
+				props["label"] = label;
+
+				if (startProp.name && startStr != null) props[startProp.name] = startStr;
+				if (endProp.name && endStr != null) props[endProp.name] = endStr;
+				if (dueProp.name && dueStr != null) props[dueProp.name] = dueStr;
+				if (scheduledProp.name && scheduledStr != null)
+					props[scheduledProp.name] = scheduledStr;
+				if (hasDuration && durationProp.name)
+					props[durationProp.name] = durationMin;
+
+				const notePath = file?.path;
+
+				rows.push({
+					x: label,
+					y: 0, // Gantt não usa Y, mas o tipo exige
+					series,
+					start,
+					end,
+					due: due ?? undefined,
+					notes: notePath ? [notePath] : [],
+					props,
+				});
+			}
+		}
+
+		// ordena por início (fica mais previsível)
+		rows.sort((a, b) => {
+			if (!a.start || !b.start) return 0;
+			return a.start.getTime() - b.start.getTime();
+		});
+
+		return rows;
+	}
 
 	private buildEncoding(fields: {
 		x: SelectedProp;
@@ -788,7 +822,10 @@ private buildRowsForGantt(
 		const yKey = fields.y.name ?? "y";
 		const labelKey =
 			fields.label.name ?? fields.x.name ?? fields.group.name ?? "label";
-
+		const groupKeyName =
+			fields.chartType === "gantt"
+				? "__basesGroup"           // <- usar o agrupamento nativo do Bases
+				: (fields.group.name ?? "group");
 		return {
 			x: xKey,
 			y: yKey,
@@ -797,7 +834,7 @@ private buildRowsForGantt(
 			end: fields.end.name ?? "end",
 			due: fields.due.name ?? "due",
 			duration: fields.duration.name ?? "duration",
-			group: fields.group.name ?? "group",
+			group: groupKeyName,  
 			label: labelKey,
 		};
 	}

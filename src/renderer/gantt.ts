@@ -226,6 +226,7 @@ class GanttEditModal extends Modal {
 	}
 }
 
+
 export function renderGantt(
 	container: HTMLElement,
 	spec: ChartSpec,
@@ -252,7 +253,7 @@ export function renderGantt(
 		return s;
 	};
 
-	// limpa elementos antigos
+	// Limpa restos de renderizações anteriores
 	Array.from(
 		container.querySelectorAll(
 			".gantt-zoom-controls, .gantt-label-floating-btn, .chart-notes-scroll, .chart-notes-details, .chart-notes-tooltip, .prop-charts-empty"
@@ -274,9 +275,8 @@ export function renderGantt(
 	}
 
 	const enc = spec.encoding as any;
-	const groupField = enc.group as string | undefined;
-	const durationField = enc.duration as string | undefined;
-	const labelField = enc.label as string | undefined;
+	const groupField = enc.group;
+	const durationField = enc.duration;
 
 	const getPropValue = (
 		props: Record<string, any> | undefined,
@@ -288,36 +288,33 @@ export function renderGantt(
 		return v;
 	};
 
+	// sentinela interno para "sem grupo"
+	const NO_GROUP = "__chartnotes_no_group__";
+
 	const tasks = tasksRaw.map((r) => {
 		const start = r.start as Date;
 		const end = r.end as Date;
 		const props = (r as any).props as Record<string, any> | undefined;
 
-		let rawLabel: string;
-
-		// prioridade: encoding.label -> r.x -> fallback
-		const fromProp = labelField ? getPropValue(props, labelField) : undefined;
-		if (fromProp != null) {
-			rawLabel = String(fromProp);
-		} else if (typeof r.x === "string") {
-			rawLabel = r.x;
-		} else if (r.x instanceof Date) {
-			rawLabel = formatDateShort(start);
-		} else {
-			rawLabel = String(r.x);
-		}
+		const rawLabel =
+			typeof r.x === "string"
+				? r.x
+				: r.x instanceof Date
+				? formatDateShort(start)
+				: String(r.x);
 
 		const fullName = normalizeFullName(rawLabel);
 
-		let groupKey: string;
-		const fromGroupField = groupField ? getPropValue(props, groupField) : undefined;
-		if (fromGroupField != null) {
-			groupKey = String(fromGroupField);
-		} else if (r.series != null) {
-			groupKey = String(r.series);
-		} else {
-			groupKey = fullName;
-		}
+		// grupo vem só do encoding.group (normalmente "__basesGroup")
+		const baseGroupRaw =
+			groupField != null && groupField !== ""
+				? getPropValue(props, groupField)
+				: undefined;
+
+		const hasGroup =
+			baseGroupRaw != null && String(baseGroupRaw).trim().length > 0;
+
+		const groupKey = hasGroup ? String(baseGroupRaw) : NO_GROUP;
 
 		const notePath = r.notes?.[0];
 		const noteTitle =
@@ -379,9 +376,12 @@ export function renderGantt(
 	for (const t of validTasks) {
 		if (t.groupKey !== lastGroup) {
 			lastGroup = t.groupKey;
-			totalRows += 1;
+			// só reserva linha extra se *tem* grupo
+			if (t.groupKey !== NO_GROUP) {
+				totalRows += 1;
+			}
 		}
-		totalRows += 1;
+		totalRows += 1; // linha da task
 	}
 
 	const minStart = Math.min(...validTasks.map((t) => t.start.getTime()));
@@ -411,16 +411,14 @@ export function renderGantt(
 		titleRow = container.createDiv({ cls: "prop-charts-title-row" });
 	}
 
-	// estado de zoom e label-mode persistidos no container
 	let zoomMode =
 		container.dataset.ganttZoomMode || String(opts.zoomMode ?? "100");
 	container.dataset.ganttZoomMode = zoomMode;
 
-	let labelModeNow =
+	const labelModeNow =
 		container.dataset.ganttLabelMode || String(opts.labelMode ?? "compact");
 	container.dataset.ganttLabelMode = labelModeNow;
 
-	// barra de zoom (sem fullscreen)
 	const zoomBar = titleRow.createDiv({ cls: "gantt-zoom-controls" });
 
 	const zoomOptions: { id: string; label: string }[] = [
@@ -441,6 +439,19 @@ export function renderGantt(
 			container.dataset.ganttZoomMode = opt.id;
 			renderGantt(container, spec, data, ctx);
 		});
+	});
+
+	// botão de fullscreen: deixa se você ainda quiser, senão é só remover este bloco
+	const fullBtn = zoomBar.createEl("button", {
+		cls: "gantt-zoom-btn gantt-fullscreen-btn",
+		text: "⤢",
+	});
+	fullBtn.addEventListener("click", (ev: MouseEvent) => {
+		ev.preventDefault();
+		const zoomTrigger = container.querySelector(
+			".chart-notes-zoom-button"
+		) as HTMLElement | null;
+		if (zoomTrigger) zoomTrigger.click();
 	});
 
 	const baseLabelWidthRaw = Number(opts.labelWidth);
@@ -543,8 +554,8 @@ export function renderGantt(
 	);
 	svg.setAttribute("height", String(height));
 
-	const axisY = PAD_TOP + 6;
 	const plotW = width - labelColWidth - PAD_RIGHT;
+	const axisY = PAD_TOP + 6;
 
 	svg.style.color = "#111111";
 
@@ -634,7 +645,6 @@ export function renderGantt(
 		svg.appendChild(todayLabel);
 	}
 
-	// botão para alternar label compacto / expandido
 	const labelToggle = inner.createEl("button", {
 		cls: "gantt-label-floating-btn",
 		text: "↔",
@@ -727,22 +737,25 @@ export function renderGantt(
 		};
 		const handleLeave = () => hideTooltip(tooltip);
 
+		// cabeçalho de grupo só se não for NO_GROUP
 		if (t.groupKey !== currentGroup) {
 			currentGroup = t.groupKey;
 
-			const yGroupCenter = axisY + 8 + rowIndex * rowH + rowH / 2;
-			const groupText = normalizeFullName(currentGroup);
+			if (currentGroup !== NO_GROUP) {
+				const yGroupCenter = axisY + 8 + rowIndex * rowH + rowH / 2;
+				const groupText = normalizeFullName(currentGroup);
 
-			drawMultilineLabel(
-				groupText,
-				4,
-				yGroupCenter,
-				labelColWidth - 12,
-				11,
-				"600"
-			);
+				drawMultilineLabel(
+					groupText,
+					4,
+					yGroupCenter,
+					labelColWidth - 12,
+					11,
+					"600"
+				);
 
-			rowIndex += 1;
+				rowIndex += 1;
+			}
 		}
 
 		const yTop = axisY + 8 + rowIndex * rowH;
@@ -804,10 +817,9 @@ export function renderGantt(
 		}
 
 		const labelCenterY = yTop + barH / 2 + 2;
-		const labelX = groupField ? 16 : 4;
+		const labelX = 4;
 
 		if (labelModeNow === "wide") {
-			// label longo, multiline
 			drawMultilineLabel(
 				fullName,
 				labelX,
@@ -820,7 +832,6 @@ export function renderGantt(
 				handleClickTask
 			);
 		} else {
-			// label compacto
 			let compact = fullName;
 			const usableWidth = Math.max(40, labelColWidth - labelX - 8);
 			const approxCharWidth = 6;
@@ -870,4 +881,5 @@ export function renderGantt(
 			"Clique em uma barra ou no nome para ajustar datas e estimate da tarefa.";
 	}
 }
+
 
