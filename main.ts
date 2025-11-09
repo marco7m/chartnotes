@@ -16,8 +16,8 @@ import { PropChartsRenderer } from "./src/renderer";
 
 /**
  * Gera a lista de opções usadas pelo Bases para configurar o layout "Chart Notes".
- * Cada item é forçado para ViewOption via `as any` para não esbarrar nas frescuras
- * de inferência de união do TypeScript com os dropdowns.
+ * Cada item é forçado para ViewOption via `as any` para não esbarrar nas
+ * frescuras de inferência de união do TypeScript com os dropdowns.
  */
 function buildChartNotesOptions(): ViewOption[] {
 	const options: ViewOption[] = [
@@ -151,25 +151,17 @@ function buildChartNotesOptions(): ViewOption[] {
 		} as any,
 		{
 			type: "property",
-			key: "scheduledProperty",
-			displayName: "Scheduled (optional)",
-			description:
-				"Scheduled date used for fallback when computing bars.",
-			shouldHide: (config: any) =>
-				String(config.get("chartType") ?? "bar") !== "gantt",
-		} as any,
-		{
-			type: "property",
 			key: "durationProperty",
 			displayName: "Duration in minutes (optional)",
 			description:
-				"Duration of the task in minutes. Used together with start/scheduled/due.",
+				"Duration of the task in minutes. Used together with start/due.",
 			shouldHide: (config: any) =>
 				String(config.get("chartType") ?? "bar") !== "gantt",
 		} as any,
 
-		// *** SEM Group property aqui ***
-		// Agrupamento do Gantt vem do próprio Bases (group-by), via __basesGroup.
+		// *** SEM Scheduled aqui ***
+		// E sem Group property – agrupamento do Gantt vem do Bases (group-by),
+		// via __basesGroup preenchido na buildRowsForGantt.
 
 		// Drilldown
 		{

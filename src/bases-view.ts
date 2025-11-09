@@ -46,8 +46,6 @@ type SelectedProp = {
 	name: string | null;
 };
 
-type PropsMap = Record<string, any>;
-
 const MISSING_LABEL = "(missing)";
 
 export class ChartNotesBasesView extends BasesView {
@@ -106,7 +104,6 @@ export class ChartNotesBasesView extends BasesView {
 		const startProp = this.getPropFromConfig("startProperty");
 		const endProp = this.getPropFromConfig("endProperty");
 		const dueProp = this.getPropFromConfig("dueProperty");
-		const scheduledProp = this.getPropFromConfig("scheduledProperty");
 		const durationProp = this.getPropFromConfig("durationProperty");
 		const groupProp = this.getPropFromConfig("groupProperty");
 
@@ -126,13 +123,10 @@ export class ChartNotesBasesView extends BasesView {
 			return;
 		}
 
-		if (
-			isGantt &&
-				!(startProp.id || endProp.id || scheduledProp.id || dueProp.id)
-		) {
+		if (isGantt && !(startProp.id || endProp.id || dueProp.id)) {
 			this.rootEl.createDiv({
 				cls: "prop-charts-empty",
-				text: "Gantt needs Start/End or Scheduled/Due with Duration.",
+				text: "Gantt needs Start/End or Due with Duration.",
 			});
 			return;
 		}
@@ -156,7 +150,6 @@ export class ChartNotesBasesView extends BasesView {
 				startProp,
 				endProp,
 				dueProp,
-				scheduledProp,
 				durationProp,
 				groupProp,
 			);
@@ -462,8 +455,8 @@ export class ChartNotesBasesView extends BasesView {
 
 		const treatAsCount =
 			forceCount ||
-				aggMode === "count" ||
-				(!yProp.id && aggMode !== "sum");
+			aggMode === "count" ||
+			(!yProp.id && aggMode !== "sum");
 
 		const yPropName = yProp.name || "y";
 
@@ -616,9 +609,8 @@ export class ChartNotesBasesView extends BasesView {
 		startProp: SelectedProp,
 		endProp: SelectedProp,
 		dueProp: SelectedProp,
-		scheduledProp: SelectedProp,
 		durationProp: SelectedProp,
-		groupProp: SelectedProp, // compatibilidade com views antigas
+		groupProp: SelectedProp, // compat com views antigas
 	): QueryResultRow[] {
 		const rows: QueryResultRow[] = [];
 
@@ -663,7 +655,6 @@ export class ChartNotesBasesView extends BasesView {
 				const startStr = this.readValue(entry, startProp);
 				const endStr = this.readValue(entry, endProp);
 				const dueStr = this.readValue(entry, dueProp);
-				const scheduledStr = this.readValue(entry, scheduledProp);
 				const durationStr = this.readValue(entry, durationProp);
 
 				const durationMin = durationStr != null ? Number(durationStr) : NaN;
@@ -673,58 +664,35 @@ export class ChartNotesBasesView extends BasesView {
 				const explicitStart = this.parseDate(startStr);
 				const explicitEnd = this.parseDate(endStr);
 				const due = this.parseDate(dueStr);
-				const scheduled = this.parseDate(scheduledStr);
 
 				let start = explicitStart;
 				let end = explicitEnd;
 
-				// 1) Start + End já definidos
-				if (!start || !end) {
-					// 2) Sem start/end, mas com scheduled
-					if (!start && !end && scheduled) {
-						if (hasDuration) {
-							end = scheduled;
-							start = new Date(scheduled.getTime() - durMs);
-						} else {
-							start = scheduled;
-							end = new Date(scheduled.getTime() + DEFAULT_BLOCK_MS);
-						}
-					}
+				// 1) Se já tem start + end, beleza.
 
-					// 3) Sem start/end, sem scheduled, mas com due
-					if ((!start || !end) && !scheduled && due) {
-						if (hasDuration) {
-							end = due;
-							start = new Date(due.getTime() - durMs);
-						} else if (!start && !end) {
-							start = due;
-							end = new Date(due.getTime() + DEFAULT_BLOCK_MS);
-						}
-					}
+				// 2) Só start → usa duração pra frente (ou bloco padrão).
+				if (start && !end) {
+					end = new Date(start.getTime() + durMs);
+				}
 
-					// 4) Start + duração (sem end)
-					if ((!start || !end) && explicitStart && hasDuration && !explicitEnd) {
-						start = explicitStart;
-						end = new Date(explicitStart.getTime() + durMs);
-					}
+				// 3) Só end → usa duração pra trás (ou bloco padrão).
+				if (!start && end) {
+					start = new Date(end.getTime() - durMs);
+				}
 
-					// 5) End + duração (sem start)
-					if ((!start || !end) && explicitEnd && hasDuration && !explicitStart) {
-						end = explicitEnd;
-						start = new Date(explicitEnd.getTime() - durMs);
-					}
-
-					// 6) Só start -> bloco curto
-					if (start && !end && !hasDuration) {
-						end = new Date(start.getTime() + DEFAULT_BLOCK_MS);
-					}
-
-					// 7) Só end -> bloco curto
-					if (!start && end && !hasDuration) {
-						start = new Date(end.getTime() - DEFAULT_BLOCK_MS);
+				// 4) Não tem start nem end, mas tem due.
+				if (!start && !end && due) {
+					if (hasDuration) {
+						end = due;
+						start = new Date(due.getTime() - durMs);
+					} else {
+						// Sem duração → bloco curto ao redor do due.
+						start = due;
+						end = new Date(due.getTime() + DEFAULT_BLOCK_MS);
 					}
 				}
 
+				// Ainda não deu pra montar intervalo? Ignora essa nota no gantt.
 				if (!start || !end) continue;
 
 				// garante start <= end
@@ -772,8 +740,6 @@ export class ChartNotesBasesView extends BasesView {
 				if (startProp.name && startStr != null) props[startProp.name] = startStr;
 				if (endProp.name && endStr != null) props[endProp.name] = endStr;
 				if (dueProp.name && dueStr != null) props[dueProp.name] = dueStr;
-				if (scheduledProp.name && scheduledStr != null)
-					props[scheduledProp.name] = scheduledStr;
 				if (hasDuration && durationProp.name)
 					props[durationProp.name] = durationMin;
 
@@ -822,10 +788,12 @@ export class ChartNotesBasesView extends BasesView {
 		const yKey = fields.y.name ?? "y";
 		const labelKey =
 			fields.label.name ?? fields.x.name ?? fields.group.name ?? "label";
+
 		const groupKeyName =
 			fields.chartType === "gantt"
-				? "__basesGroup"           // <- usar o agrupamento nativo do Bases
+				? "__basesGroup" // usar o agrupamento nativo do Bases
 				: (fields.group.name ?? "group");
+
 		return {
 			x: xKey,
 			y: yKey,
@@ -834,7 +802,7 @@ export class ChartNotesBasesView extends BasesView {
 			end: fields.end.name ?? "end",
 			due: fields.due.name ?? "due",
 			duration: fields.duration.name ?? "duration",
-			group: groupKeyName,  
+			group: groupKeyName,
 			label: labelKey,
 		};
 	}
