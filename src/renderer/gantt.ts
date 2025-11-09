@@ -226,7 +226,6 @@ class GanttEditModal extends Modal {
 	}
 }
 
-
 export function renderGantt(
 	container: HTMLElement,
 	spec: ChartSpec,
@@ -441,18 +440,7 @@ export function renderGantt(
 		});
 	});
 
-	// botão de fullscreen: deixa se você ainda quiser, senão é só remover este bloco
-	const fullBtn = zoomBar.createEl("button", {
-		cls: "gantt-zoom-btn gantt-fullscreen-btn",
-		text: "⤢",
-	});
-	fullBtn.addEventListener("click", (ev: MouseEvent) => {
-		ev.preventDefault();
-		const zoomTrigger = container.querySelector(
-			".chart-notes-zoom-button"
-		) as HTMLElement | null;
-		if (zoomTrigger) zoomTrigger.click();
-	});
+	// (fullscreen removido aqui)
 
 	const baseLabelWidthRaw = Number(opts.labelWidth);
 	const baseLabelWidth =
@@ -881,5 +869,3 @@ export function renderGantt(
 			"Clique em uma barra ou no nome para ajustar datas e estimate da tarefa.";
 	}
 }
-
-
