@@ -40,6 +40,7 @@ export default class ChartNotesPlugin extends Plugin {
 				}
 			}),
 		);
+
 		this.registerEvent(
 			this.app.vault.on("create", async (file) => {
 				if (file instanceof TFile) {
@@ -47,6 +48,7 @@ export default class ChartNotesPlugin extends Plugin {
 				}
 			}),
 		);
+
 		this.registerEvent(
 			this.app.vault.on("delete", async (file) => {
 				if (file instanceof TFile) {
@@ -63,7 +65,6 @@ export default class ChartNotesPlugin extends Plugin {
 			icon: "lucide-chart-area",
 			factory: (controller, containerEl) =>
 				new ChartNotesBasesView(controller, containerEl, this.renderer),
-
 			options: () => {
 				const opts: any[] = [];
 
@@ -91,7 +92,7 @@ export default class ChartNotesPlugin extends Plugin {
 					key: "xProperty",
 					displayName: "X axis / category (bars & slices)",
 					description:
-						"Property used for the X axis or categories (for pie, this is the slice).",
+					"Property used for the X axis or categories (for pie, this is the slice).",
 					shouldHide: (config: any) =>
 						String(config.get("chartType") ?? "bar") === "gantt",
 				} as any);
@@ -102,7 +103,7 @@ export default class ChartNotesPlugin extends Plugin {
 					key: "ganttLabelProperty",
 					displayName: "Task label (Gantt)",
 					description:
-						"Label for each task bar. If empty, uses the note title.",
+					"Label for each task bar.\nIf empty, uses the note title.",
 					shouldHide: (config: any) =>
 						String(config.get("chartType") ?? "bar") !== "gantt",
 				} as any);
@@ -113,7 +114,7 @@ export default class ChartNotesPlugin extends Plugin {
 					key: "yProperty",
 					displayName: "Y value (empty = count)",
 					description:
-						"Numeric property summed on the Y axis. Leave empty to just count notes.",
+					"Numeric property summed on the Y axis.\nLeave empty to just count notes.",
 					shouldHide: (config: any) => {
 						const t = String(config.get("chartType") ?? "bar");
 						return t === "pie" || t === "gantt";
@@ -126,7 +127,7 @@ export default class ChartNotesPlugin extends Plugin {
 					key: "seriesProperty",
 					displayName: "Series / color (optional)",
 					description:
-						"Property that defines series / color for bars, lines and area.",
+					"Property that defines series / color for bars, lines and area.",
 					shouldHide: (config: any) =>
 						String(config.get("chartType") ?? "bar") === "pie",
 				} as any);
@@ -137,7 +138,7 @@ export default class ChartNotesPlugin extends Plugin {
 					key: "xBucket",
 					displayName: "X bucket (dates)",
 					description:
-						"How to bucket dates on the X axis for line / area charts (day, week, month...).",
+					"How to bucket dates on the X axis for line / area charts (day, week, month...).",
 					default: "auto",
 					options: {
 						auto: "Auto",
@@ -154,27 +155,7 @@ export default class ChartNotesPlugin extends Plugin {
 					},
 				} as any);
 
-				// Agregação do Y
-				opts.push({
-					type: "dropdown",
-					key: "aggregateMode",
-					displayName: "Value aggregation (Y)",
-					description:
-						"How to aggregate Y values with the same X / series.",
-					default: "sum",
-					options: {
-						sum: "Sum",
-						count: "Count (ignore Y)",
-						"cumulative-sum": "Cumulative sum (line/area only)",
-					} as Record<string, string>,
-					shouldHide: (config: any) => {
-						const t = String(config.get("chartType") ?? "bar");
-						return t === "pie" || t === "scatter" || t === "gantt";
-					},
-				} as any);
-
 				// --------- opções específicas do Gantt ---------
-
 				opts.push({
 					type: "property",
 					key: "startProperty",
@@ -207,20 +188,9 @@ export default class ChartNotesPlugin extends Plugin {
 					key: "durationProperty",
 					displayName: "Duration in minutes (optional)",
 					description:
-						"Duration of the task in minutes. Used together with start/end/due.",
+					"Duration of the task in minutes.\nUsed together with start/end/due.",
 					shouldHide: (config: any) =>
 						String(config.get("chartType") ?? "bar") !== "gantt",
-				} as any);
-
-				// Group property (não usado pelo Gantt – que usa o agrupamento nativo do Bases)
-				opts.push({
-					type: "property",
-					key: "groupProperty",
-					displayName: "Group property",
-					description:
-						"Property to group bars or series. Gantt uses Bases built-in grouping instead.",
-					shouldHide: (config: any) =>
-						String(config.get("chartType") ?? "bar") === "gantt",
 				} as any);
 
 				// Drilldown
@@ -236,7 +206,7 @@ export default class ChartNotesPlugin extends Plugin {
 					type: "text",
 					key: "title",
 					displayName: "Title (optional)",
-					description: "Custom chart title. Falls back to the view name.",
+					description: "Custom chart title.\nFalls back to the view name.",
 				} as any);
 
 				return opts as any;
