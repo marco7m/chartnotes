@@ -6,10 +6,6 @@ Chart Notes adds a new **“Chart Notes” layout** to Bases so you can turn any
 into bar, line, pie, scatter or Gantt charts – using your existing properties
 (frontmatter or inline).
 
-> ⚠️ **Bases-only**  
-> The 1.x versions of this plugin are designed to run **only inside Bases**.  
-> The old code-block / YAML syntax is no longer supported.
-
 ---
 
 ## Features
@@ -58,9 +54,7 @@ into bar, line, pie, scatter or Gantt charts – using your existing properties
 2. In BRAT, add this repo as a beta plugin:
 
 ```
-
-[https://github.com/marco7m/chartnotes](https://github.com/marco7m/chartnotes)
-
+https://github.com/marco7m/chartnotes
 ````
 
 3. Let BRAT install/update it.
