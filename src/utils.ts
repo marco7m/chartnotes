@@ -63,19 +63,45 @@ export function looksLikeISODate(v: any): boolean {
 }
 
 export function toDate(v: any): Date | null {
-  if (v instanceof Date) return v;
+  if (v instanceof Date && !isNaN(v.getTime())) return v;
   if (typeof v !== "string") return null;
 
-  // yyyy-mm-dd
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-    const [y, m, d] = v.split("-");
-    return new Date(Number(y), Number(m) - 1, Number(d), 0, 0, 0, 0);
+  const s = v.trim();
+
+  // Padrão: YYYY-MM-DD ou YYYY-MM-DD HH:MM[:SS] ou YYYY-MM-DDTHH:MM[:SS]
+  // Ignora qualquer coisa depois (Z, offset, etc) e trata tudo como horário LOCAL.
+  const m = s.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/
+  );
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    const hh = m[4] ? Number(m[4]) : 0;
+    const mi = m[5] ? Number(m[5]) : 0;
+    const ss = m[6] ? Number(m[6]) : 0;
+
+    if (
+      Number.isNaN(y) ||
+      Number.isNaN(mo) ||
+      Number.isNaN(d) ||
+      Number.isNaN(hh) ||
+      Number.isNaN(mi) ||
+      Number.isNaN(ss)
+    ) {
+      return null;
+    }
+
+    // Tudo em horário local, sem timezone.
+    return new Date(y, mo, d, hh, mi, ss, 0);
   }
 
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return null;
-  return d;
+  // Fallback: deixa o JS tentar interpretar outros formatos.
+  const dflt = new Date(s);
+  if (isNaN(dflt.getTime())) return null;
+  return dflt;
 }
+
 
 function startOfDay(d: Date): Date {
   const nd = new Date(d);

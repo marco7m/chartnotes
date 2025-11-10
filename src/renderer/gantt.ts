@@ -57,6 +57,7 @@ class GanttEditModal extends Modal {
 	async onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
+		this.titleEl.setText("Editar tarefa");
 
 		const file = this.app.vault.getAbstractFileByPath(this.notePath);
 		if (!(file instanceof TFile)) {
@@ -68,34 +69,18 @@ class GanttEditModal extends Modal {
 
 		const raw = await this.app.vault.read(file);
 
-		let front: any = {};
+		// Frontmatter + corpo
+		let front: Record<string, any> = {};
 		let body = raw;
-		const fmMatch = /^---\n([\s\S]*?)\n---\n?/m.exec(raw);
+		const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
 		if (fmMatch) {
 			try {
-				front = parseYaml(fmMatch[1]) ?? {};
+				front = (parseYaml(fmMatch[1]) ?? {}) as Record<string, any>;
 			} catch {
 				front = {};
 			}
-			body = raw.slice(fmMatch[0].length);
+			body = fmMatch[2] ?? "";
 		}
-		if (typeof front !== "object" || front == null) front = {};
-
-		const title =
-			this.notePath.replace(/\.md$/i, "").split("/").pop() ?? this.notePath;
-		const header = contentEl.createDiv({ cls: "gantt-edit-header" });
-		const titleEl = header.createEl("a", {
-			text: title,
-			cls: "gantt-edit-title",
-		});
-		titleEl.href = "#";
-		titleEl.addEventListener("click", (ev: MouseEvent) => {
-			ev.preventDefault();
-			this.app.workspace.openLinkText(this.notePath, this.notePath, true);
-		});
-
-		const subtitle = header.createDiv({ cls: "gantt-edit-subtitle" });
-		subtitle.textContent = this.notePath;
 
 		const form = contentEl.createDiv({ cls: "gantt-edit-form" });
 
@@ -107,75 +92,120 @@ class GanttEditModal extends Modal {
 			return { row, field };
 		};
 
-		const toDateInput = (v: any): string => {
-			if (!v) return "";
-			const s = String(v);
-			const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
-			if (m) return m[1];
-			return "";
+		// Parse de string -> Date local (ignorando timezone)
+		const parseLocalDateTime = (v: any): Date | null => {
+			if (!v) return null;
+			if (v instanceof Date && !isNaN(v.getTime())) return v;
+			const s = String(v).trim();
+			const m = s.match(
+				/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/
+			);
+			if (!m) return null;
+			const y = Number(m[1]);
+			const mo = Number(m[2]) - 1;
+			const d = Number(m[3]);
+			const hh = m[4] ? Number(m[4]) : 0;
+			const mi = m[5] ? Number(m[5]) : 0;
+			const ss = m[6] ? Number(m[6]) : 0;
+			if (
+				Number.isNaN(y) ||
+				Number.isNaN(mo) ||
+				Number.isNaN(d) ||
+				Number.isNaN(hh) ||
+				Number.isNaN(mi) ||
+				Number.isNaN(ss)
+			) {
+				return null;
+			}
+			return new Date(y, mo, d, hh, mi, ss, 0);
 		};
 
-		const fromDateInput = (s: string): string | undefined => {
+		// Date -> valor pra <input type="datetime-local"> (YYYY-MM-DDTHH:mm)
+		const toDateTimeInput = (v: any): string => {
+			const d = parseLocalDateTime(v);
+			if (!d) return "";
+			const pad = (n: number) => n.toString().padStart(2, "0");
+			const y = d.getFullYear();
+			const m = pad(d.getMonth() + 1);
+			const day = pad(d.getDate());
+			const hh = pad(d.getHours());
+			const mi = pad(d.getMinutes());
+			return `${y}-${m}-${day}T${hh}:${mi}`;
+		};
+
+		// Valor do input -> string pra salvar no YAML (sempre local, sem timezone)
+		const fromDateTimeInput = (s: string): string | undefined => {
 			s = s.trim();
 			if (!s) return undefined;
-			if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return undefined;
-			return s;
+			// Aceita YYYY-MM-DD ou YYYY-MM-DDTHH:mm
+			const m = s.match(
+				/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/
+			);
+			if (!m) return undefined;
+			const datePart = `${m[1]}-${m[2]}-${m[3]}`;
+			if (m[4]) {
+				const hh = m[4];
+				const mi = m[5];
+				return `${datePart}T${hh}:${mi}`;
+			}
+			return datePart;
 		};
 
 		let startInput: HTMLInputElement | null = null;
-		if (this.startKey) {
-			const { field } = makeRow(this.startKey + " (início)");
-			startInput = field.createEl("input", { type: "date" });
-			startInput.value = toDateInput(front[this.startKey]);
-		}
-
 		let endInput: HTMLInputElement | null = null;
-		if (this.endKey) {
-			const { field } = makeRow(this.endKey + " (fim)");
-			endInput = field.createEl("input", { type: "date" });
-			endInput.value = toDateInput(front[this.endKey]);
-		}
-
 		let durInput: HTMLInputElement | null = null;
-		if (this.durationKey) {
-			const { field } = makeRow(this.durationKey + " (minutos)");
-			durInput = field.createEl("input", { type: "number" });
-			const v = front[this.durationKey];
-			durInput.value = v != null ? String(v) : "";
-			durInput.min = "0";
-			durInput.step = "5";
-		}
-
 		let dueInput: HTMLInputElement | null = null;
-		if (this.dueKey) {
-			const { field } = makeRow(this.dueKey + " (due)");
-			dueInput = field.createEl("input", { type: "date" });
-			dueInput.value = toDateInput(front[this.dueKey]);
+
+		if (this.startKey) {
+			const { field } = makeRow(`Início (${this.startKey})`);
+			startInput = field.createEl("input");
+			startInput.type = "datetime-local";
+			startInput.value = toDateTimeInput(front[this.startKey]);
 		}
 
-		const buttons = contentEl.createDiv({ cls: "gantt-edit-buttons" });
+		if (this.endKey) {
+			const { field } = makeRow(`Fim (${this.endKey})`);
+			endInput = field.createEl("input");
+			endInput.type = "datetime-local";
+			endInput.value = toDateTimeInput(front[this.endKey]);
+		}
+
+		if (this.durationKey) {
+			const { field } = makeRow(`Duração (min) (${this.durationKey})`);
+			durInput = field.createEl("input");
+			durInput.type = "number";
+			const v = front[this.durationKey];
+			durInput.value =
+				typeof v === "number" && !Number.isNaN(v) ? String(v) : "";
+		}
+
+		if (this.dueKey) {
+			const { field } = makeRow(`Due (${this.dueKey})`);
+			dueInput = field.createEl("input");
+			dueInput.type = "datetime-local";
+			dueInput.value = toDateTimeInput(front[this.dueKey]);
+		}
+
+		// Botões
+		const buttons = form.createDiv({ cls: "gantt-edit-actions" });
 		const saveBtn = buttons.createEl("button", {
 			text: "Salvar",
-			cls: "mod-cta",
 		});
-		const cancelBtn = buttons.createEl("button", { text: "Cancelar" });
-
-		cancelBtn.addEventListener("click", (ev: MouseEvent) => {
-			ev.preventDefault();
-			this.close();
+		const cancelBtn = buttons.createEl("button", {
+			text: "Cancelar",
 		});
+		cancelBtn.addEventListener("click", () => this.close());
 
-		saveBtn.addEventListener("click", async (ev: MouseEvent) => {
-			ev.preventDefault();
-
+		saveBtn.addEventListener("click", async () => {
+			// Atualiza frontmatter com base nos inputs
 			if (this.startKey && startInput) {
-				const v = fromDateInput(startInput.value);
+				const v = fromDateTimeInput(startInput.value);
 				if (v) front[this.startKey] = v;
 				else delete front[this.startKey];
 			}
 
 			if (this.endKey && endInput) {
-				const v = fromDateInput(endInput.value);
+				const v = fromDateTimeInput(endInput.value);
 				if (v) front[this.endKey] = v;
 				else delete front[this.endKey];
 			}
@@ -191,7 +221,7 @@ class GanttEditModal extends Modal {
 			}
 
 			if (this.dueKey && dueInput) {
-				const v = fromDateInput(dueInput.value);
+				const v = fromDateTimeInput(dueInput.value);
 				if (v) front[this.dueKey] = v;
 				else delete front[this.dueKey];
 			}
@@ -225,6 +255,7 @@ class GanttEditModal extends Modal {
 		this.contentEl.empty();
 	}
 }
+
 
 export function renderGantt(
 	container: HTMLElement,
