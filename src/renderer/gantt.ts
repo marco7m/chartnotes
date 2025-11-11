@@ -191,13 +191,21 @@ class GanttEditModal extends Modal {
 		const saveBtn = buttons.createEl("button", {
 			text: "Salvar",
 		});
+		const openBtn = buttons.createEl("button", {
+			text: "Abrir nota",
+		});
 		const cancelBtn = buttons.createEl("button", {
 			text: "Cancelar",
 		});
+
+		openBtn.addEventListener("click", () => {
+			this.app.workspace.openLinkText(this.notePath, "", false);
+			this.close();
+		});
+
 		cancelBtn.addEventListener("click", () => this.close());
 
-		saveBtn.addEventListener("click", async () => {
-			// Atualiza frontmatter com base nos inputs
+		saveBtn.addEventListener("click", async () => {			// Atualiza frontmatter com base nos inputs
 			if (this.startKey && startInput) {
 				const v = fromDateTimeInput(startInput.value);
 				if (v) front[this.startKey] = v;
