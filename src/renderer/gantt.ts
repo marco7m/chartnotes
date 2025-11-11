@@ -24,22 +24,23 @@ import {
 
 declare const app: App;
 
+
 class GanttEditModal extends Modal {
 	private notePath: string;
 	private spec: ChartSpec;
 	private refresh?: () => void;
 	private reindexFile?: (path: string) => void | Promise<void>;
 
-	private startKey?: string;
-	private endKey?: string;
-	private durationKey?: string;
-	private dueKey?: string;
+	private startKey: string | undefined;
+	private endKey: string | undefined;
+	private durationKey: string | undefined;
+	private dueKey: string | undefined;
 
 	constructor(
 		notePath: string,
 		spec: ChartSpec,
 		refresh?: () => void,
-		reindexFile?: (path: string) => void | Promise<void>
+		reindexFile?: (path: string) => void | Promise<void>,
 	) {
 		super(app);
 		this.notePath = notePath;
@@ -66,6 +67,9 @@ class GanttEditModal extends Modal {
 			});
 			return;
 		}
+
+		// Mostra no título o nome da nota associada ao item do Gantt.
+		this.titleEl.setText(`Editar tarefa – ${file.basename}`);
 
 		const raw = await this.app.vault.read(file);
 
@@ -98,7 +102,7 @@ class GanttEditModal extends Modal {
 			if (v instanceof Date && !isNaN(v.getTime())) return v;
 			const s = String(v).trim();
 			const m = s.match(
-				/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/
+				/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/,
 			);
 			if (!m) return null;
 			const y = Number(m[1]);
@@ -139,7 +143,7 @@ class GanttEditModal extends Modal {
 			if (!s) return undefined;
 			// Aceita YYYY-MM-DD ou YYYY-MM-DDTHH:mm
 			const m = s.match(
-				/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/
+				/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/,
 			);
 			if (!m) return undefined;
 			const datePart = `${m[1]}-${m[2]}-${m[3]}`;
@@ -187,14 +191,33 @@ class GanttEditModal extends Modal {
 		}
 
 		// Botões
-		const buttons = form.createDiv({ cls: "gantt-edit-actions" });
-		const saveBtn = buttons.createEl("button", {
-			text: "Salvar",
+		const actionsRow = form.createDiv({ cls: "gantt-edit-actions-row" });
+		actionsRow.style.marginTop = "0.75rem";
+		actionsRow.style.display = "flex";
+		actionsRow.style.justifyContent = "space-between";
+		actionsRow.style.alignItems = "center";
+
+		const leftActions = actionsRow.createDiv({
+			cls: "gantt-edit-actions-left",
 		});
-		const openBtn = buttons.createEl("button", {
+		leftActions.style.display = "flex";
+
+		const rightActions = actionsRow.createDiv({
+			cls: "gantt-edit-actions-right",
+		});
+		rightActions.style.display = "flex";
+		rightActions.style.gap = "0.5rem";
+
+		// Botão à esquerda
+		const openBtn = leftActions.createEl("button", {
 			text: "Abrir nota",
 		});
-		const cancelBtn = buttons.createEl("button", {
+
+		// Botões à direita
+		const saveBtn = rightActions.createEl("button", {
+			text: "Salvar",
+		});
+		const cancelBtn = rightActions.createEl("button", {
 			text: "Cancelar",
 		});
 
@@ -205,7 +228,8 @@ class GanttEditModal extends Modal {
 
 		cancelBtn.addEventListener("click", () => this.close());
 
-		saveBtn.addEventListener("click", async () => {			// Atualiza frontmatter com base nos inputs
+		saveBtn.addEventListener("click", async () => {
+			// Atualiza frontmatter com base nos inputs
 			if (this.startKey && startInput) {
 				const v = fromDateTimeInput(startInput.value);
 				if (v) front[this.startKey] = v;
@@ -263,7 +287,6 @@ class GanttEditModal extends Modal {
 		this.contentEl.empty();
 	}
 }
-
 
 export function renderGantt(
 	container: HTMLElement,
