@@ -1,4 +1,5 @@
 // src/renderer/bar.ts
+
 import type { ChartSpec, QueryResult, QueryResultRow } from "../types";
 import {
 	ensureContainer,
@@ -59,9 +60,11 @@ export function renderBar(
 	const categories = catKeys.map((k) => groupsMap.get(k)!);
 	const nCats = categories.length;
 
+	const seriesKeyOf = (v: unknown) => String(v ?? "");
+
 	const seriesSet = new Set<string>();
 	rows.forEach((r) => {
-		if (r.series != null) seriesSet.add(String(r.series));
+		if (r.series != null) seriesSet.add(seriesKeyOf(r.series));
 	});
 	const seriesKeys = Array.from(seriesSet);
 
@@ -195,7 +198,7 @@ export function renderBar(
 
 		seriesKeys.forEach((sKey, sIndex) => {
 			const row = catRows.find(
-				(r) => (r.series != null ? String(r.series) : "") === sKey
+				(r) => r.series != null && seriesKeyOf(r.series) === sKey
 			);
 			if (!row) return;
 
@@ -265,25 +268,7 @@ export function renderStackedBar(
 		return;
 	}
 
-	const { inner, svg, tooltip, details } = ensureContainer(
-		container,
-		background
-	);
-	const vw = container.getBoundingClientRect().width || 600;
-	const width = Math.max(vw, 480);
-	inner.style.width = width + "px";
-
-	const PAD_L2 = 40;
-	const PAD_R2 = 16;
-	const PAD_T2 = 18;
-	const PAD_B2 = 28;
-
-	const height = DEFAULT_H;
-	svg.setAttribute("height", String(height));
-
-	const plotW = width - PAD_L2 - PAD_R2;
-	const plotH = height - PAD_T2 - PAD_B2;
-
+	// --- Agrupamento + normalização ANTES de criar container
 	type CatGroup = { label: any; rows: QueryResultRow[] };
 	const groupsMap = new Map<string, CatGroup>();
 
@@ -300,27 +285,45 @@ export function renderStackedBar(
 	const categories = catKeys.map((k) => groupsMap.get(k)!);
 	const nCats = categories.length;
 
-	const seriesSet = new Set<string>();
-	rows.forEach((r) => {
-		if (r.series != null) seriesSet.add(String(r.series));
-	});
+	const keyOf = (v: unknown) => String(v ?? "");
+	const seriesSet = new Set<string>(rows.map((r) => keyOf(r.series)));
 	const seriesKeys = Array.from(seriesSet);
 
-	if (!seriesKeys.length) {
+	// Se só temos a chave vazia, não há séries de fato → cai para bar normal
+	if (seriesKeys.length === 1 && seriesKeys[0] === "") {
 		renderBar(container, spec, data);
 		return;
 	}
 
+	// --- A partir daqui criamos o container/SVG
+	const { inner, svg, tooltip, details } = ensureContainer(
+		container,
+		background
+	);
+	const vw = container.getBoundingClientRect().width || 600;
+	const width = Math.max(vw, 480);
+	inner.style.width = width + "px";
+	svg.setAttribute("width", String(width)); // por segurança
+	const PAD_L2 = 40,
+		PAD_R2 = 16,
+		PAD_T2 = 18,
+		PAD_B2 = 28;
+	const height = DEFAULT_H;
+	svg.setAttribute("height", String(height));
+
+	const plotW = width - PAD_L2 - PAD_R2;
+	const plotH = height - PAD_T2 - PAD_B2;
+
 	let maxY = 0;
 	categories.forEach((cat) => {
-		const sum = cat.rows.reduce((acc, r) => acc + r.y, 0);
+		const sum = cat.rows.reduce((acc, r) => acc + (r.y || 0), 0);
 		if (sum > maxY) maxY = sum;
 	});
 	if (!isFinite(maxY) || maxY <= 0) maxY = 1;
 
 	const yScale = (v: number) => PAD_T2 + plotH - (v / (maxY || 1)) * plotH;
-	const baselineY = yScale(0);
 
+	// Eixo Y
 	const yTicks = 4;
 	for (let i = 0; i <= yTicks; i++) {
 		const t = (maxY * i) / yTicks;
@@ -347,6 +350,7 @@ export function renderStackedBar(
 
 	const step = nCats > 0 ? plotW / nCats : plotW;
 
+	// X labels
 	categories.forEach((cat, idx) => {
 		const cx = PAD_L2 + step * (idx + 0.5);
 		const xLabel = String(cat.label);
@@ -361,8 +365,10 @@ export function renderStackedBar(
 		svg.appendChild(labelNode);
 	});
 
-	const legend = container.createDiv({ cls: "chart-notes-legend" });
+	// Legenda dentro do inner (evita bagunçar layout)
+	const legend = inner.createDiv({ cls: "chart-notes-legend" });
 	seriesKeys.forEach((sKey, idx) => {
+		if (sKey === "") return; // não mostrar bucket vazio
 		const item = legend.createDiv({ cls: "chart-notes-legend-item" });
 		const swatch = item.createDiv();
 		swatch.style.width = "10px";
@@ -372,6 +378,7 @@ export function renderStackedBar(
 		item.createSpan({ text: sKey });
 	});
 
+	// Barras empilhadas
 	categories.forEach((cat, catIndex) => {
 		const cx = PAD_L2 + step * (catIndex + 0.5);
 		const barWidth = step * 0.6;
@@ -380,12 +387,11 @@ export function renderStackedBar(
 		let acc = 0;
 
 		seriesKeys.forEach((sKey, sIndex) => {
-			const row = cat.rows.find(
-				(r) => (r.series != null ? String(r.series) : "") === sKey
-			);
+			if (sKey === "") return; // ignora bucket vazio
+			const row = cat.rows.find((r) => keyOf(r.series) === sKey);
 			if (!row) return;
 
-			const v = row.y;
+			const v = row.y || 0;
 			const vStart = acc;
 			const vEnd = acc + v;
 			acc = vEnd;
@@ -414,7 +420,7 @@ export function renderStackedBar(
 			rect.addEventListener("mouseenter", (ev: MouseEvent) =>
 				showTooltip(
 					container,
-					tooltip,
+					tooltip as HTMLElement,
 					title,
 					body,
 					row.notes?.length ?? 0,
@@ -422,7 +428,6 @@ export function renderStackedBar(
 				)
 			);
 			rect.addEventListener("mouseleave", () => hideTooltip(tooltip));
-
 			rect.addEventListener("click", (ev: MouseEvent) => {
 				ev.preventDefault();
 				openDetails(
@@ -439,3 +444,4 @@ export function renderStackedBar(
 		});
 	});
 }
+
