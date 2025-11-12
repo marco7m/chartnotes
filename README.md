@@ -353,6 +353,30 @@ The compiled plugin files (`main.js`, `manifest.json`, `styles.css`) are generat
 npm run dev
 ```
 
+### Testing
+
+Chart Notes includes a comprehensive test suite using **Vitest**.
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode (auto-rerun on file changes)
+npm run test:watch
+
+# Run tests with coverage report
+npm run test:coverage
+```
+
+**Test Coverage:**
+- Utility functions (date parsing, path matching, tag matching)
+- Query and aggregation functions
+- Cumulative sum logic
+- Stacking calculations
+- Date normalization
+
+See [`tests/README.md`](./tests/README.md) for detailed testing documentation and examples.
+
 ### Project Structure
 ```
 chartnotes/
@@ -368,6 +392,11 @@ chartnotes/
 │   │   ├── scatter.ts      # Scatter plot renderer
 │   │   └── gantt.ts        # Gantt chart renderer
 │   └── types.ts            # TypeScript types
+├── tests/                  # Unit tests
+│   ├── utils.test.ts       # Utility function tests
+│   ├── query.test.ts       # Query function tests
+│   ├── stacking.test.ts    # Stacking logic tests
+│   └── README.md           # Testing guide
 ├── main.ts                 # Plugin entry point
 ├── manifest.json           # Plugin manifest
 └── package.json            # Dependencies
