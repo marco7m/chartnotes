@@ -1,11 +1,11 @@
 /**
- * Testes para funções de query e agregação
+ * Tests for query and aggregation functions
  */
 
 import { describe, it, expect } from "vitest";
 import type { QueryResultRow } from "../src/types";
 
-// Funções extraídas para testes
+// Functions extracted for testing
 function compareXAsc(a: QueryResultRow, b: QueryResultRow): number {
 	const ax = a.x;
 	const bx = b.x;
@@ -55,11 +55,11 @@ function parseRollingWindow(rolling: any): number {
 			return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 		}
 	}
-	throw new Error(`aggregate.rolling inválido: ${String(rolling)}`);
+	throw new Error(`Invalid aggregate.rolling: ${String(rolling)}`);
 }
 
 describe("compareXAsc", () => {
-	it("deve comparar datas corretamente", () => {
+	it("should compare dates correctly", () => {
 		const a: QueryResultRow = { x: new Date("2024-01-15"), y: 10 };
 		const b: QueryResultRow = { x: new Date("2024-01-20"), y: 20 };
 		
@@ -68,7 +68,7 @@ describe("compareXAsc", () => {
 		expect(compareXAsc(a, a)).toBe(0);
 	});
 
-	it("deve comparar strings alfabeticamente", () => {
+	it("should compare strings alphabetically", () => {
 		const a: QueryResultRow = { x: "apple", y: 10 };
 		const b: QueryResultRow = { x: "banana", y: 20 };
 		
@@ -76,7 +76,7 @@ describe("compareXAsc", () => {
 		expect(compareXAsc(b, a)).toBeGreaterThan(0);
 	});
 
-	it("deve comparar números como strings", () => {
+	it("should compare numbers as strings", () => {
 		const a: QueryResultRow = { x: "10", y: 10 };
 		const b: QueryResultRow = { x: "20", y: 20 };
 		
@@ -85,7 +85,7 @@ describe("compareXAsc", () => {
 });
 
 describe("compareXSeriesAsc", () => {
-	it("deve comparar primeiro por X, depois por série", () => {
+	it("should compare first by X, then by series", () => {
 		const a: QueryResultRow = { x: "2024-01-15", y: 10, series: "A" };
 		const b: QueryResultRow = { x: "2024-01-15", y: 20, series: "B" };
 		
@@ -93,14 +93,14 @@ describe("compareXSeriesAsc", () => {
 		expect(compareXSeriesAsc(b, a)).toBeGreaterThan(0);
 	});
 
-	it("deve usar X quando séries são iguais", () => {
+	it("should use X when series are equal", () => {
 		const a: QueryResultRow = { x: new Date("2024-01-15"), y: 10, series: "A" };
 		const b: QueryResultRow = { x: new Date("2024-01-20"), y: 20, series: "A" };
 		
 		expect(compareXSeriesAsc(a, b)).toBeLessThan(0);
 	});
 
-	it("deve tratar séries vazias como string vazia", () => {
+	it("should treat empty series as empty string", () => {
 		const a: QueryResultRow = { x: "2024-01-15", y: 10 };
 		const b: QueryResultRow = { x: "2024-01-15", y: 20, series: "A" };
 		
@@ -109,7 +109,7 @@ describe("compareXSeriesAsc", () => {
 });
 
 describe("applyCumulativeInOrder", () => {
-	it("deve calcular soma cumulativa corretamente", () => {
+	it("should calculate cumulative sum correctly", () => {
 		const rows: QueryResultRow[] = [
 			{ x: "2024-01-01", y: 10 },
 			{ x: "2024-01-02", y: 20 },
@@ -123,7 +123,7 @@ describe("applyCumulativeInOrder", () => {
 		expect(result[2].y).toBe(60); // 30 + 30
 	});
 
-	it("deve calcular soma cumulativa por série separadamente", () => {
+	it("should calculate cumulative sum per series separately", () => {
 		const rows: QueryResultRow[] = [
 			{ x: "2024-01-01", y: 10, series: "A" },
 			{ x: "2024-01-01", y: 5, series: "B" },
@@ -142,7 +142,7 @@ describe("applyCumulativeInOrder", () => {
 		expect(result[3].y).toBe(20); // 5 + 15
 	});
 
-	it("deve manter monotonicidade (nunca diminui)", () => {
+	it("should maintain monotonicity (never decreases)", () => {
 		const rows: QueryResultRow[] = [
 			{ x: "2024-01-01", y: 10 },
 			{ x: "2024-01-02", y: 5 }, // valor menor
@@ -156,7 +156,7 @@ describe("applyCumulativeInOrder", () => {
 		expect(result[2].y).toBe(35); // 15 + 20
 	});
 
-	it("deve tratar séries vazias como __no_series__", () => {
+	it("should treat empty series as __no_series__", () => {
 		const rows: QueryResultRow[] = [
 			{ x: "2024-01-01", y: 10 },
 			{ x: "2024-01-02", y: 20 },
@@ -170,25 +170,25 @@ describe("applyCumulativeInOrder", () => {
 });
 
 describe("parseRollingWindow", () => {
-	it("deve parsear números corretamente", () => {
+	it("should parse numbers correctly", () => {
 		expect(parseRollingWindow(7)).toBe(7);
 		expect(parseRollingWindow(0)).toBe(0);
 		expect(parseRollingWindow(10.5)).toBe(10); // floor
 	});
 
-	it("deve parsear strings numéricas", () => {
+	it("should parse numeric strings", () => {
 		expect(parseRollingWindow("7")).toBe(7);
 		expect(parseRollingWindow("10")).toBe(10);
 		expect(parseRollingWindow(" 5 ")).toBe(5);
 	});
 
-	it("deve retornar 0 para valores inválidos", () => {
+	it("should return 0 for invalid values", () => {
 		expect(parseRollingWindow(null)).toBe(0);
 		expect(parseRollingWindow(undefined)).toBe(0);
 		expect(parseRollingWindow(-5)).toBe(0);
 	});
 
-	it("deve lançar erro para strings não numéricas", () => {
+	it("should throw error for non-numeric strings", () => {
 		expect(() => parseRollingWindow("invalid")).toThrow();
 		expect(() => parseRollingWindow("abc")).toThrow();
 	});

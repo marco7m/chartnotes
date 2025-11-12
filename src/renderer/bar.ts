@@ -21,7 +21,7 @@ export function renderBar(
 
 	const rows = data.rows ?? [];
 	if (!rows.length) {
-		container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
+		container.createDiv({ cls: "prop-charts-empty", text: "No data available." });
 		return;
 	}
 
@@ -264,7 +264,7 @@ export function renderStackedBar(
 
 	const rows = data.rows ?? [];
 	if (!rows.length) {
-		container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
+		container.createDiv({ cls: "prop-charts-empty", text: "No data available." });
 		return;
 	}
 

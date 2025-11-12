@@ -1,10 +1,10 @@
 /**
- * Testes para normalização de datas
+ * Tests for date normalization
  */
 
 import { describe, it, expect } from "vitest";
 
-// Função normalizeDateKey extraída para testes
+// normalizeDateKey function extracted for testing
 function looksLikeISODate(s: any): boolean {
 	if (typeof s !== "string") return false;
 	const trimmed = s.trim();
@@ -26,7 +26,7 @@ function toDate(s: any): Date | null {
 
 function normalizeDateKey(orig: any): { key: string | number | Date; isDate: boolean } {
 	if (typeof orig === "string") {
-		// pega só o dia se vier no formato ISO com hora
+		// Extract only the day if it comes in ISO format with time
 		if (/^\d{4}-\d{2}-\d{2}/.test(orig)) {
 			const day = orig.slice(0, 10); // "2025-10-05"
 			return { key: day, isDate: true };
@@ -40,31 +40,31 @@ function normalizeDateKey(orig: any): { key: string | number | Date; isDate: boo
 }
 
 describe("normalizeDateKey", () => {
-	it("deve normalizar strings ISO com hora para apenas data", () => {
+	it("should normalize ISO strings with time to date only", () => {
 		const result = normalizeDateKey("2024-01-15T10:30:00Z");
 		expect(result.isDate).toBe(true);
 		expect(result.key).toBe("2024-01-15");
 	});
 
-	it("deve manter strings ISO sem hora", () => {
+	it("should keep ISO strings without time", () => {
 		const result = normalizeDateKey("2024-01-15");
 		expect(result.isDate).toBe(true);
 		expect(result.key).toBe("2024-01-15");
 	});
 
-	it("deve converter strings ISO para Date quando possível", () => {
+	it("should convert ISO strings to Date when possible", () => {
 		const result = normalizeDateKey("2024-01-15");
 		expect(result.isDate).toBe(true);
-		// Pode ser string ou Date dependendo da implementação
+		// May be string or Date depending on implementation
 	});
 
-	it("deve retornar false para valores não-datas", () => {
+	it("should return false for non-date values", () => {
 		expect(normalizeDateKey("not a date").isDate).toBe(false);
 		expect(normalizeDateKey(123).isDate).toBe(false);
 		expect(normalizeDateKey(null).isDate).toBe(false);
 	});
 
-	it("deve manter valores originais quando não são datas", () => {
+	it("should keep original values when they are not dates", () => {
 		const result = normalizeDateKey("category");
 		expect(result.isDate).toBe(false);
 		expect(result.key).toBe("category");
@@ -72,13 +72,13 @@ describe("normalizeDateKey", () => {
 });
 
 describe("looksLikeISODate", () => {
-	it("deve identificar strings ISO", () => {
+	it("should identify ISO strings", () => {
 		expect(looksLikeISODate("2024-01-15")).toBe(true);
 		expect(looksLikeISODate("2024-01-15T10:30:00Z")).toBe(true);
 		expect(looksLikeISODate("  2024-01-15  ")).toBe(true);
 	});
 
-	it("não deve identificar strings não-ISO", () => {
+	it("should not identify non-ISO strings", () => {
 		expect(looksLikeISODate("01/15/2024")).toBe(false);
 		expect(looksLikeISODate("2024")).toBe(false);
 		expect(looksLikeISODate("not a date")).toBe(false);
@@ -87,19 +87,19 @@ describe("looksLikeISODate", () => {
 });
 
 describe("toDate", () => {
-	it("deve converter strings ISO para Date", () => {
+	it("should convert ISO strings to Date", () => {
 		const result = toDate("2024-01-15");
 		expect(result).toBeInstanceOf(Date);
 		expect(result?.getFullYear()).toBe(2024);
 	});
 
-	it("deve retornar Date quando recebe Date", () => {
+	it("should return Date when receiving Date", () => {
 		const date = new Date("2024-01-15");
 		const result = toDate(date);
 		expect(result).toBe(date);
 	});
 
-	it("deve retornar null para valores inválidos", () => {
+	it("should return null for invalid values", () => {
 		expect(toDate("invalid")).toBeNull();
 		expect(toDate(null)).toBeNull();
 		expect(toDate(undefined)).toBeNull();

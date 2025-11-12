@@ -52,8 +52,8 @@ Chart Notes is a powerful Obsidian plugin that adds a **Chart Notes layout** to 
 1. Install the **[BRAT](https://github.com/TfTHacker/obsidian42-brat)** plugin in Obsidian
 2. Open **Settings → Community plugins → BRAT**
 3. Click **"Add Beta Plugin"** and paste:
-   ```
-   https://github.com/marco7m/chartnotes
+```
+https://github.com/marco7m/chartnotes
    ```
 4. BRAT will install the plugin automatically
 5. Enable **Chart Notes** in **Settings → Community plugins**
@@ -61,16 +61,16 @@ Chart Notes is a powerful Obsidian plugin that adds a **Chart Notes layout** to 
 ### Option 2: Manual Installation
 
 1. Clone this repository into your vault's plugins folder:
-   ```bash
-   cd path/to/your/vault/.obsidian/plugins
-   git clone https://github.com/marco7m/chartnotes.git
-   cd chartnotes
+```bash
+cd path/to/your/vault/.obsidian/plugins
+git clone https://github.com/marco7m/chartnotes.git
+cd chartnotes
    ```
 
 2. Install dependencies and build:
    ```bash
-   npm install
-   npm run build
+npm install
+npm run build
    ```
 
 3. Restart Obsidian and enable **Chart Notes** in **Settings → Community plugins**

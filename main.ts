@@ -1,4 +1,10 @@
-// main.ts
+/**
+ * Chart Notes Plugin
+ * 
+ * Main plugin entry point. Integrates with Obsidian Bases to provide
+ * chart visualization capabilities from note properties.
+ */
+
 import { App, Plugin, PluginManifest, TFile } from "obsidian";
 import {
 	CHARTNOTES_BASES_VIEW_TYPE,
@@ -20,7 +26,7 @@ export default class ChartNotesPlugin extends Plugin {
 	async onload() {
 		console.log("Chart Notes: loading plugin (Bases-only)");
 
-		// Indexador
+		// Indexer
 		this.indexer = new PropChartsIndexer(this.app);
 		await this.indexer.buildIndex();
 
@@ -29,10 +35,10 @@ export default class ChartNotesPlugin extends Plugin {
 			[],
 		);
 
-		// Renderer compartilhado (apenas Bases agora)
+		// Shared renderer (Bases-only now)
 		this.renderer = new PropChartsRenderer();
 
-		// Atualização incremental do índice
+		// Incremental index updates
 		this.registerEvent(
 			this.app.vault.on("modify", async (file) => {
 				if (file instanceof TFile) {
@@ -57,9 +63,9 @@ export default class ChartNotesPlugin extends Plugin {
 			}),
 		);
 
-		// -----------------------------------------------------------------
-		// Bases view (Obsidian 1.10+)
-		// -----------------------------------------------------------------
+		// =================================================================
+		// Bases View Registration (Obsidian 1.10+)
+		// =================================================================
 		this.registerBasesView(CHARTNOTES_BASES_VIEW_TYPE, {
 			name: "Chart Notes",
 			icon: "lucide-chart-area",
@@ -68,7 +74,7 @@ export default class ChartNotesPlugin extends Plugin {
 			options: () => {
 				const opts: any[] = [];
 
-				// Tipo de gráfico
+				// Chart type
 				opts.push({
 					type: "dropdown",
 					key: "chartType",
@@ -86,59 +92,59 @@ export default class ChartNotesPlugin extends Plugin {
 					} as Record<string, string>,
 				} as any);
 
-				// X / categoria (usado em todos, exceto Gantt)
+				// X / category (used in all charts except Gantt)
 				opts.push({
 					type: "property",
 					key: "xProperty",
 					displayName: "X axis / category (bars & slices)",
 					description:
-					"Property used for the X axis or categories (for pie, this is the slice).",
+						"Property used for the X axis or categories (for pie, this is the slice).",
 					shouldHide: (config: any) =>
 						String(config.get("chartType") ?? "bar") === "gantt",
 				} as any);
 
-				// Label específico do Gantt (opcional – se vazio usa título da nota)
+				// Gantt-specific label (optional – if empty uses note title)
 				opts.push({
 					type: "property",
 					key: "ganttLabelProperty",
 					displayName: "Task label (Gantt)",
 					description:
-					"Label for each task bar.\nIf empty, uses the note title.",
+						"Label for each task bar.\nIf empty, uses the note title.",
 					shouldHide: (config: any) =>
 						String(config.get("chartType") ?? "bar") !== "gantt",
 				} as any);
 
-				// Y (valor numérico). Em branco = count.
+				// Y (numeric value). Empty = count
 				opts.push({
 					type: "property",
 					key: "yProperty",
 					displayName: "Y value (empty = count)",
 					description:
-					"Numeric property summed on the Y axis.\nLeave empty to just count notes.",
+						"Numeric property summed on the Y axis.\nLeave empty to just count notes.",
 					shouldHide: (config: any) => {
-						const t = String(config.get("chartType") ?? "bar");
-						return t === "pie" || t === "gantt";
+						const chartType = String(config.get("chartType") ?? "bar");
+						return chartType === "pie" || chartType === "gantt";
 					},
 				} as any);
 
-				// Série / cor
+				// Series / color
 				opts.push({
 					type: "property",
 					key: "seriesProperty",
 					displayName: "Series / color (optional)",
 					description:
-					"Property that defines series / color for bars, lines and stacked area.",
+						"Property that defines series / color for bars, lines and stacked area.",
 					shouldHide: (config: any) =>
 						String(config.get("chartType") ?? "bar") === "pie",
 				} as any);
 
-				// Value aggregation (Y) – como combinar várias notas com o mesmo X/série
+				// Value aggregation (Y) – how to combine multiple notes with same X/series
 				opts.push({
 					type: "dropdown",
-					key: "aggregateMode",              // <– chave certa, bate com bases-view.ts
+					key: "aggregateMode", // Correct key, matches bases-view.ts
 					displayName: "Value aggregation (Y)",
 					description:
-					"How to aggregate Y when multiple notes share the same X/series.\n" +
+						"How to aggregate Y when multiple notes share the same X/series.\n" +
 						"For line/stacked-area, 'Cumulative sum' turns the series into a running total.",
 					default: "sum",
 					options: {
@@ -147,19 +153,19 @@ export default class ChartNotesPlugin extends Plugin {
 						"cumulative-sum": "Cumulative sum",
 					} as Record<string, string>,
 					shouldHide: (config: any) => {
-						const t = String(config.get("chartType") ?? "bar");
-						// Não faz sentido para scatter e gantt, que são linha-a-linha
-						return t === "scatter" || t === "gantt";
+						const chartType = String(config.get("chartType") ?? "bar");
+						// Doesn't make sense for scatter and gantt, which are row-by-row
+						return chartType === "scatter" || chartType === "gantt";
 					},
 				} as any);
 
-				// Bucketing de datas no eixo X (só linha / área)
+				// Date bucketing on X axis (line / area only)
 				opts.push({
 					type: "dropdown",
 					key: "xBucket",
 					displayName: "X bucket (dates)",
 					description:
-					"How to bucket dates on the X axis for line / stacked area charts (day, week, month...).",
+						"How to bucket dates on the X axis for line / stacked area charts (day, week, month...).",
 					default: "auto",
 					options: {
 						auto: "Auto",
@@ -171,12 +177,12 @@ export default class ChartNotesPlugin extends Plugin {
 						year: "Year",
 					} as Record<string, string>,
 					shouldHide: (config: any) => {
-						const t = String(config.get("chartType") ?? "bar");
-						return !(t === "line" || t === "stacked-area");
+						const chartType = String(config.get("chartType") ?? "bar");
+						return !(chartType === "line" || chartType === "stacked-area");
 					},
 				} as any);
 
-				// --------- opções específicas do Gantt ---------
+				// Gantt-specific options
 				opts.push({
 					type: "property",
 					key: "startProperty",

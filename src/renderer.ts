@@ -48,7 +48,7 @@ export class PropChartsRenderer {
 				break;
 			default:
 				container.createDiv({
-					text: "Chart Notes: tipo não suportado: " + spec.type,
+					text: "Chart Notes: unsupported type: " + spec.type,
 				});
 		}
 	}

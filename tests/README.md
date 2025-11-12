@@ -1,73 +1,80 @@
-# Guia de Testes - Chart Notes
+# Testing Guide - Chart Notes
 
-Este guia explica como usar os testes unitários do projeto Chart Notes.
+This guide explains how to use the unit tests for the Chart Notes project.
 
-## 📋 Pré-requisitos
+## 📋 Prerequisites
 
-Os testes usam **Vitest**, um framework moderno e rápido para testes em TypeScript/JavaScript.
+Tests use **Vitest**, a modern and fast testing framework for TypeScript/JavaScript.
 
-## 🚀 Como Rodar os Testes
+## 🚀 How to Run Tests
 
-### Instalar dependências (se ainda não instalou)
+### Install dependencies (if not already installed)
 ```bash
 npm install
 ```
 
-### Rodar todos os testes uma vez
+### Run all tests once
 ```bash
 npm test
 ```
 
-### Rodar testes em modo watch (recomendado durante desenvolvimento)
+### Run tests in watch mode (recommended during development)
 ```bash
 npm run test:watch
 ```
-Isso roda os testes automaticamente sempre que você salvar um arquivo.
+This runs tests automatically whenever you save a file.
 
-### Rodar testes com cobertura
+### Run tests with coverage
 ```bash
 npm run test:coverage
 ```
-Isso gera um relatório mostrando quais partes do código estão cobertas por testes.
+This generates a report showing which parts of the code are covered by tests.
 
-## 📁 Estrutura dos Testes
+## 📁 Test Structure
 
-Os testes estão organizados em arquivos na pasta `tests/`:
+Tests are organized in files in the `tests/` folder:
 
-- `utils.test.ts` - Testes para funções utilitárias (parseDateLike, etc.)
-- `query.test.ts` - Testes para funções de query e agregação
-- `stacking.test.ts` - Testes para lógica de empilhamento (stacked area)
-- `date-normalization.test.ts` - Testes para normalização de datas
+- `utils.test.ts` - Tests for utility functions (parseDateLike, etc.)
+- `query.test.ts` - Tests for query and aggregation functions
+- `stacking.test.ts` - Tests for stacking logic (stacked area)
+- `date-normalization.test.ts` - Tests for date normalization
+- `aggregation.test.ts` - Tests for aggregation functions (sum, avg, min, max, count)
+- `where-clause.test.ts` - Tests for WHERE clause parsing and evaluation
+- `date-bucketing.test.ts` - Tests for date bucketing (day/week/month/quarter/year)
+- `rolling-average.test.ts` - Tests for rolling average
+- `date-utilities.test.ts` - Tests for date utilities (toDate, resolveRelativeDate, etc.)
+- `gantt-date-logic.test.ts` - Tests for Gantt date logic
+- `multi-value-x.test.ts` - Tests for multi-value handling (pie charts, tags)
 
-## ✍️ Como Escrever Novos Testes
+## ✍️ How to Write New Tests
 
-### Estrutura Básica
+### Basic Structure
 
 ```typescript
 import { describe, it, expect } from "vitest";
 
-describe("nomeDaFuncao", () => {
-  it("deve fazer algo específico", () => {
-    // Arrange (preparar)
-    const input = "valor de teste";
+describe("functionName", () => {
+  it("should do something specific", () => {
+    // Arrange (prepare)
+    const input = "test value";
     
-    // Act (executar)
-    const result = minhaFuncao(input);
+    // Act (execute)
+    const result = myFunction(input);
     
-    // Assert (verificar)
-    expect(result).toBe("resultado esperado");
+    // Assert (verify)
+    expect(result).toBe("expected result");
   });
 });
 ```
 
-### Exemplos de Asserções
+### Assertion Examples
 
 ```typescript
-// Igualdade
+// Equality
 expect(result).toBe(5);
 expect(result).toEqual({ a: 1, b: 2 });
 
-// Valores booleanos
+// Boolean values
 expect(result).toBe(true);
 expect(result).toBeTruthy();
 expect(result).toBeFalsy();
@@ -77,10 +84,10 @@ expect(result).toBeNull();
 expect(result).toBeUndefined();
 expect(result).toBeDefined();
 
-// Números
+// Numbers
 expect(result).toBeGreaterThan(10);
 expect(result).toBeLessThan(20);
-expect(result).toBeCloseTo(3.14, 2); // para floats
+expect(result).toBeCloseTo(3.14, 2); // for floats
 
 // Strings
 expect(result).toContain("substring");
@@ -90,22 +97,22 @@ expect(result).toMatch(/regex/);
 expect(array).toHaveLength(3);
 expect(array).toContain("item");
 
-// Exceções
-expect(() => funcaoQueLancaErro()).toThrow();
-expect(() => funcaoQueLancaErro()).toThrow("mensagem de erro");
+// Exceptions
+expect(() => functionThatThrows()).toThrow();
+expect(() => functionThatThrows()).toThrow("error message");
 ```
 
-### Testando Funções Privadas
+### Testing Private Functions
 
-Se uma função é privada (não exportada), você tem duas opções:
+If a function is private (not exported), you have two options:
 
-1. **Extrair a função para um arquivo de utilitários** e exportá-la
-2. **Copiar a função no arquivo de teste** (como fizemos com `parseDateLike`)
+1. **Extract the function to a utilities file** and export it
+2. **Copy the function in the test file** (as we did with `parseDateLike`)
 
-### Testando com Datas
+### Testing with Dates
 
 ```typescript
-it("deve comparar datas corretamente", () => {
+it("should compare dates correctly", () => {
   const date1 = new Date("2024-01-15");
   const date2 = new Date("2024-01-20");
   
@@ -113,64 +120,63 @@ it("deve comparar datas corretamente", () => {
 });
 ```
 
-### Testando com Mocks (quando necessário)
+### Testing with Mocks (when needed)
 
 ```typescript
 import { vi } from "vitest";
 
-it("deve chamar função externa", () => {
+it("should call external function", () => {
   const mockFn = vi.fn();
-  minhaFuncao(mockFn);
+  myFunction(mockFn);
   expect(mockFn).toHaveBeenCalled();
 });
 ```
 
-## 🎯 Boas Práticas
+## 🎯 Best Practices
 
-1. **Um teste, uma coisa**: Cada teste deve verificar uma funcionalidade específica
-2. **Nomes descritivos**: Use nomes que descrevam o que o teste verifica
-3. **Arrange-Act-Assert**: Organize seus testes nessa ordem
-4. **Teste casos extremos**: Valores zero, null, undefined, strings vazias
-5. **Teste casos de erro**: O que acontece quando a entrada é inválida?
+1. **One test, one thing**: Each test should verify a specific functionality
+2. **Descriptive names**: Use names that describe what the test verifies
+3. **Arrange-Act-Assert**: Organize your tests in this order
+4. **Test edge cases**: Zero values, null, undefined, empty strings
+5. **Test error cases**: What happens when input is invalid?
 
-## 📊 Entendendo a Cobertura
+## 📊 Understanding Coverage
 
-Quando você roda `npm run test:coverage`, o Vitest gera um relatório mostrando:
+When you run `npm run test:coverage`, Vitest generates a report showing:
 
-- **Statements**: Quantas linhas de código foram executadas
-- **Branches**: Quantos caminhos condicionais foram testados
-- **Functions**: Quantas funções foram chamadas
-- **Lines**: Quantas linhas foram executadas
+- **Statements**: How many lines of code were executed
+- **Branches**: How many conditional paths were tested
+- **Functions**: How many functions were called
+- **Lines**: How many lines were executed
 
-A meta é ter alta cobertura, mas **100% não é sempre necessário**. Foque em testar:
-- Funções críticas (lógica de negócio)
-- Funções complexas (muitas condições)
-- Funções que são fáceis de quebrar
+The goal is to have high coverage, but **100% is not always necessary**. Focus on testing:
+- Critical functions (business logic)
+- Complex functions (many conditions)
+- Functions that are easy to break
 
-## 🔍 Debugando Testes
+## 🔍 Debugging Tests
 
-Se um teste falhar, o Vitest mostra:
-- Qual teste falhou
-- O valor esperado vs. o valor recebido
-- A linha onde o erro ocorreu
+If a test fails, Vitest shows:
+- Which test failed
+- Expected value vs. received value
+- The line where the error occurred
 
-Para debugar, você pode usar `console.log` dentro dos testes:
+To debug, you can use `console.log` inside tests:
 
 ```typescript
-it("deve fazer algo", () => {
-  const result = minhaFuncao(input);
-  console.log("Resultado:", result); // Aparece no terminal
+it("should do something", () => {
+  const result = myFunction(input);
+  console.log("Result:", result); // Appears in terminal
   expect(result).toBe(expected);
 });
 ```
 
-## 📚 Recursos Adicionais
+## 📚 Additional Resources
 
-- [Documentação do Vitest](https://vitest.dev/)
-- [Guia de Testes em TypeScript](https://vitest.dev/guide/typescript.html)
-- [Matchers do Vitest](https://vitest.dev/api/expect.html)
+- [Vitest Documentation](https://vitest.dev/)
+- [TypeScript Testing Guide](https://vitest.dev/guide/typescript.html)
+- [Vitest Matchers](https://vitest.dev/api/expect.html)
 
-## ❓ Dúvidas?
+## ❓ Questions?
 
-Se tiver dúvidas sobre como testar algo específico, consulte a documentação do Vitest ou pergunte na issue do GitHub!
-
+If you have questions about how to test something specific, consult the Vitest documentation or ask in a GitHub issue!

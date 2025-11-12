@@ -19,7 +19,7 @@ export function renderPie(
 ): void {
 	const { background, drilldown = true } = spec.options ?? {};
 	if (data.rows.length === 0) {
-		container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
+		container.createDiv({ cls: "prop-charts-empty", text: "No data available." });
 		return;
 	}
 

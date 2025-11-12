@@ -58,22 +58,22 @@ class GanttEditModal extends Modal {
 	async onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
-		this.titleEl.setText("Editar tarefa");
+		this.titleEl.setText("Edit task");
 
 		const file = this.app.vault.getAbstractFileByPath(this.notePath);
 		if (!(file instanceof TFile)) {
 			contentEl.createEl("p", {
-				text: "Arquivo não encontrado: " + this.notePath,
+				text: "File not found: " + this.notePath,
 			});
 			return;
 		}
 
-		// Mostra no título o nome da nota associada ao item do Gantt.
-		this.titleEl.setText(`Editar tarefa – ${file.basename}`);
+		// Show the note name associated with the Gantt item in the title
+		this.titleEl.setText(`Edit task – ${file.basename}`);
 
 		const raw = await this.app.vault.read(file);
 
-		// Frontmatter + corpo
+		// Frontmatter + body
 		let front: Record<string, any> = {};
 		let body = raw;
 		const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
@@ -96,7 +96,7 @@ class GanttEditModal extends Modal {
 			return { row, field };
 		};
 
-		// Parse de string -> Date local (ignorando timezone)
+		// Parse string -> local Date (ignoring timezone)
 		const parseLocalDateTime = (v: any): Date | null => {
 			if (!v) return null;
 			if (v instanceof Date && !isNaN(v.getTime())) return v;
@@ -137,11 +137,11 @@ class GanttEditModal extends Modal {
 			return `${y}-${m}-${day}T${hh}:${mi}`;
 		};
 
-		// Valor do input -> string pra salvar no YAML (sempre local, sem timezone)
+		// Input value -> string to save in YAML (always local, no timezone)
 		const fromDateTimeInput = (s: string): string | undefined => {
 			s = s.trim();
 			if (!s) return undefined;
-			// Aceita YYYY-MM-DD ou YYYY-MM-DDTHH:mm
+			// Accepts YYYY-MM-DD or YYYY-MM-DDTHH:mm
 			const m = s.match(
 				/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/,
 			);
@@ -208,17 +208,17 @@ class GanttEditModal extends Modal {
 		rightActions.style.display = "flex";
 		rightActions.style.gap = "0.5rem";
 
-		// Botão à esquerda
+		// Button on the left
 		const openBtn = leftActions.createEl("button", {
-			text: "Abrir nota",
+			text: "Open note",
 		});
 
-		// Botões à direita
+		// Buttons on the right
 		const saveBtn = rightActions.createEl("button", {
-			text: "Salvar",
+			text: "Save",
 		});
 		const cancelBtn = rightActions.createEl("button", {
-			text: "Cancelar",
+			text: "Cancel",
 		});
 
 		openBtn.addEventListener("click", () => {
@@ -229,7 +229,7 @@ class GanttEditModal extends Modal {
 		cancelBtn.addEventListener("click", () => this.close());
 
 		saveBtn.addEventListener("click", async () => {
-			// Atualiza frontmatter com base nos inputs
+			// Update frontmatter based on inputs
 			if (this.startKey && startInput) {
 				const v = fromDateTimeInput(startInput.value);
 				if (v) front[this.startKey] = v;
@@ -322,7 +322,7 @@ export function renderGantt(
 	).forEach((el) => el.remove());
 
 	if (data.rows.length === 0) {
-		container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
+		container.createDiv({ cls: "prop-charts-empty", text: "No data available." });
 		return;
 	}
 
@@ -330,7 +330,7 @@ export function renderGantt(
 	if (tasksRaw.length === 0) {
 		container.createDiv({
 			cls: "prop-charts-empty",
-			text: "Gantt: faltam campos de data.",
+			text: "Gantt: missing date fields.",
 		});
 		return;
 	}
@@ -349,7 +349,7 @@ export function renderGantt(
 		return v;
 	};
 
-	// sentinela interno para "sem grupo"
+	// Internal sentinel for "no group"
 	const NO_GROUP = "__chartnotes_no_group__";
 
 	const tasks = tasksRaw.map((r) => {
@@ -366,7 +366,7 @@ export function renderGantt(
 
 		const fullName = normalizeFullName(rawLabel);
 
-		// grupo vem só do encoding.group (normalmente "__basesGroup")
+		// Group comes only from encoding.group (usually "__basesGroup")
 		const baseGroupRaw =
 			groupField != null && groupField !== ""
 				? getPropValue(props, groupField)
@@ -416,7 +416,7 @@ export function renderGantt(
 	if (validTasks.length === 0) {
 		container.createDiv({
 			cls: "prop-charts-empty",
-			text: "Gantt: datas inválidas.",
+			text: "Gantt: invalid dates.",
 		});
 		return;
 	}
@@ -437,12 +437,12 @@ export function renderGantt(
 	for (const t of validTasks) {
 		if (t.groupKey !== lastGroup) {
 			lastGroup = t.groupKey;
-			// só reserva linha extra se *tem* grupo
+			// Only reserve extra line if there *is* a group
 			if (t.groupKey !== NO_GROUP) {
 				totalRows += 1;
 			}
 		}
-		totalRows += 1; // linha da task
+		totalRows += 1; // task row
 	}
 
 	const minStart = Math.min(...validTasks.map((t) => t.start.getTime()));
@@ -450,7 +450,7 @@ export function renderGantt(
 	if (!isFinite(minStart) || !isFinite(maxEnd)) {
 		container.createDiv({
 			cls: "prop-charts-empty",
-			text: "Gantt: intervalo de datas inválido.",
+			text: "Gantt: invalid date range.",
 		});
 		return;
 	}
@@ -691,7 +691,7 @@ export function renderGantt(
 		todayLabel.setAttribute("y", String(axisY + 12));
 		todayLabel.setAttribute("font-size", "10");
 		todayLabel.setAttribute("fill", "#4caf50");
-		todayLabel.textContent = "hoje";
+		todayLabel.textContent = "today";
 		svg.appendChild(todayLabel);
 	}
 
@@ -701,7 +701,7 @@ export function renderGantt(
 	});
 	labelToggle.setAttr(
 		"title",
-		labelModeNow === "wide" ? "Compactar nomes" : "Expandir nomes"
+		labelModeNow === "wide" ? "Compact names" : "Expand names"
 	);
 	labelToggle.style.left = `${labelColWidth}px`;
 	labelToggle.style.top = `4px`;
@@ -928,6 +928,6 @@ export function renderGantt(
 	if (editable) {
 		const hint = container.createDiv({ cls: "prop-charts-empty" });
 		hint.textContent =
-			"Clique em uma barra ou no nome para ajustar datas e estimate da tarefa.";
+			"Click on a bar or name to adjust dates and task estimate.";
 	}
 }

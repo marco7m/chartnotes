@@ -1,417 +1,506 @@
-// src/utils.ts
+/**
+ * Utility Functions
+ * 
+ * Provides helper functions for path matching, tag matching, date parsing,
+ * and WHERE clause evaluation.
+ */
+
+// ============================================================================
+// Types
+// ============================================================================
 
 export type Operator =
-  | "=="
-  | "!="
-  | ">"
-  | ">="
-  | "<"
-  | "<="
-  | "between";
+	| "=="
+	| "!="
+	| ">"
+	| ">="
+	| "<"
+	| "<="
+	| "between";
 
 export interface ParsedCond {
-  field: string;
-  op: Operator;
-  value: any;
-  value2?: any;
-  valueType: "string" | "number" | "date";
+	field: string;
+	op: Operator;
+	value: any;
+	value2?: any;
+	valueType: "string" | "number" | "date";
 }
 
-// ----------------------------------------------------
-// PATH
-// ----------------------------------------------------
+// ============================================================================
+// Path Matching
+// ============================================================================
+
+/**
+ * Checks if a path matches any of the given prefixes.
+ * 
+ * @param path - Path to check
+ * @param prefixes - Array of path prefixes to match against
+ * @returns True if path matches any prefix
+ */
 export function matchPath(path: string, prefixes: string[]): boolean {
-  if (!prefixes || prefixes.length === 0) return true;
-  for (const p of prefixes) {
-    if (p === ".") return true;
-    const norm = p.endsWith("/") ? p : p + "/";
-    if (path === p || path.startsWith(norm)) return true;
-  }
-  return false;
+	if (!prefixes || prefixes.length === 0) return true;
+	for (const prefix of prefixes) {
+		if (prefix === ".") return true;
+		const normalized = prefix.endsWith("/") ? prefix : prefix + "/";
+		if (path === prefix || path.startsWith(normalized)) return true;
+	}
+	return false;
 }
 
-// ----------------------------------------------------
-// TAGS
-// ----------------------------------------------------
+// ============================================================================
+// Tag Matching
+// ============================================================================
+
+/**
+ * Checks if note properties contain any of the wanted tags.
+ * 
+ * @param props - Note properties object
+ * @param wanted - Array of tag names to search for
+ * @returns True if any wanted tag is found
+ */
 export function matchTags(props: Record<string, any>, wanted: string[]): boolean {
-  if (!wanted || wanted.length === 0) return true;
-  const noteTags = props["tags"];
-  if (!noteTags) return false;
+	if (!wanted || wanted.length === 0) return true;
+	const noteTags = props["tags"];
+	if (!noteTags) return false;
 
-  if (Array.isArray(noteTags)) {
-    for (const w of wanted) {
-      if (noteTags.includes(w)) return true;
-      if (noteTags.includes("#" + w)) return true;
-    }
-    return false;
-  }
+	if (Array.isArray(noteTags)) {
+		for (const wantedTag of wanted) {
+			if (noteTags.includes(wantedTag)) return true;
+			if (noteTags.includes("#" + wantedTag)) return true;
+		}
+		return false;
+	}
 
-  const s = String(noteTags);
-  for (const w of wanted) {
-    if (s === w) return true;
-    if (s === "#" + w) return true;
-  }
-  return false;
+	const tagString = String(noteTags);
+	for (const wantedTag of wanted) {
+		if (tagString === wantedTag) return true;
+		if (tagString === "#" + wantedTag) return true;
+	}
+	return false;
 }
 
-// ----------------------------------------------------
-// DATAS
-// ----------------------------------------------------
-export function looksLikeISODate(v: any): boolean {
-  if (typeof v !== "string") return false;
-  return /^\d{4}-\d{2}-\d{2}/.test(v);
+// ============================================================================
+// Date Parsing
+// ============================================================================
+
+/**
+ * Checks if a value looks like an ISO date string (YYYY-MM-DD...).
+ */
+export function looksLikeISODate(value: any): boolean {
+	if (typeof value !== "string") return false;
+	return /^\d{4}-\d{2}-\d{2}/.test(value);
 }
 
-export function toDate(v: any): Date | null {
-  if (v instanceof Date && !isNaN(v.getTime())) return v;
-  if (typeof v !== "string") return null;
+/**
+ * Converts a value to a Date object.
+ * 
+ * Supports:
+ * - Date objects (returns as-is if valid)
+ * - ISO strings: YYYY-MM-DD or YYYY-MM-DD HH:MM[:SS] or YYYY-MM-DDTHH:MM[:SS]
+ * - Other formats (fallback to JavaScript Date parsing)
+ * 
+ * All dates are treated as LOCAL time (ignores timezone info).
+ */
+export function toDate(value: any): Date | null {
+	if (value instanceof Date && !isNaN(value.getTime())) return value;
+	if (typeof value !== "string") return null;
 
-  const s = v.trim();
+	const trimmed = value.trim();
 
-  // Padrão: YYYY-MM-DD ou YYYY-MM-DD HH:MM[:SS] ou YYYY-MM-DDTHH:MM[:SS]
-  // Ignora qualquer coisa depois (Z, offset, etc) e trata tudo como horário LOCAL.
-  const m = s.match(
-    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/
-  );
-  if (m) {
-    const y = Number(m[1]);
-    const mo = Number(m[2]) - 1;
-    const d = Number(m[3]);
-    const hh = m[4] ? Number(m[4]) : 0;
-    const mi = m[5] ? Number(m[5]) : 0;
-    const ss = m[6] ? Number(m[6]) : 0;
+	// Pattern: YYYY-MM-DD or YYYY-MM-DD HH:MM[:SS] or YYYY-MM-DDTHH:MM[:SS]
+	// Ignores anything after (Z, offset, etc) and treats everything as LOCAL time
+	const match = trimmed.match(
+		/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/
+	);
+	if (match) {
+		const year = Number(match[1]);
+		const month = Number(match[2]) - 1;
+		const day = Number(match[3]);
+		const hour = match[4] ? Number(match[4]) : 0;
+		const minute = match[5] ? Number(match[5]) : 0;
+		const second = match[6] ? Number(match[6]) : 0;
 
-    if (
-      Number.isNaN(y) ||
-      Number.isNaN(mo) ||
-      Number.isNaN(d) ||
-      Number.isNaN(hh) ||
-      Number.isNaN(mi) ||
-      Number.isNaN(ss)
-    ) {
-      return null;
-    }
+		if (
+			Number.isNaN(year) ||
+			Number.isNaN(month) ||
+			Number.isNaN(day) ||
+			Number.isNaN(hour) ||
+			Number.isNaN(minute) ||
+			Number.isNaN(second)
+		) {
+			return null;
+		}
 
-    // Tudo em horário local, sem timezone.
-    return new Date(y, mo, d, hh, mi, ss, 0);
-  }
+		// Everything in local time, no timezone
+		return new Date(year, month, day, hour, minute, second, 0);
+	}
 
-  // Fallback: deixa o JS tentar interpretar outros formatos.
-  const dflt = new Date(s);
-  if (isNaN(dflt.getTime())) return null;
-  return dflt;
+	// Fallback: let JavaScript try to interpret other formats
+	const fallback = new Date(trimmed);
+	if (isNaN(fallback.getTime())) return null;
+	return fallback;
 }
 
+// ============================================================================
+// Date Helper Functions
+// ============================================================================
 
-function startOfDay(d: Date): Date {
-  const nd = new Date(d);
-  nd.setHours(0, 0, 0, 0);
-  return nd;
+function startOfDay(date: Date): Date {
+	const result = new Date(date);
+	result.setHours(0, 0, 0, 0);
+	return result;
 }
 
 function subDays(base: Date, days: number): Date {
-  const d = new Date(base);
-  d.setDate(d.getDate() - days);
-  return d;
-}
-function subWeeks(base: Date, w: number): Date {
-  return subDays(base, w * 7);
-}
-function subMonths(base: Date, m: number): Date {
-  const d = new Date(base);
-  d.setMonth(d.getMonth() - m);
-  return d;
-}
-function addDays(base: Date, days: number): Date {
-  const d = new Date(base);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-function addWeeks(base: Date, w: number): Date {
-  return addDays(base, w * 7);
-}
-function addMonths(base: Date, m: number): Date {
-  const d = new Date(base);
-  d.setMonth(d.getMonth() + m);
-  return d;
+	const result = new Date(base);
+	result.setDate(result.getDate() - days);
+	return result;
 }
 
-// campo “cheira” a data?
-export function isDateFieldName(field: string): boolean {
-  const f = field.toLowerCase();
-  const direct = [
-    "date",
-    "scheduled",
-    "due",
-    "start",
-    "end",
-    "created",
-    "modified",
-    "datecreated",
-    "datemodified",
-  ];
-  if (direct.includes(f)) return true;
-  if (f.endsWith("date")) return true;
-  if (f.endsWith("at")) return true;
-  if (f.endsWith("on")) return true;
-  return false;
+function subWeeks(base: Date, weeks: number): Date {
+	return subDays(base, weeks * 7);
+}
+
+function subMonths(base: Date, months: number): Date {
+	const result = new Date(base);
+	result.setMonth(result.getMonth() - months);
+	return result;
+}
+
+function addDays(base: Date, days: number): Date {
+	const result = new Date(base);
+	result.setDate(result.getDate() + days);
+	return result;
+}
+
+function addWeeks(base: Date, weeks: number): Date {
+	return addDays(base, weeks * 7);
+}
+
+function addMonths(base: Date, months: number): Date {
+	const result = new Date(base);
+	result.setMonth(result.getMonth() + months);
+	return result;
 }
 
 /**
- * relative:
- *  today / yesterday
- *  -1 / -10 / -7d / -2w / -3m
- *  +1 / +10 / +7d / +2w / +1m
+ * Checks if a field name "smells" like a date field.
+ * 
+ * Recognizes common date field names like: date, scheduled, due, start, end,
+ * created, modified, and fields ending with "date", "at", or "on".
+ */
+export function isDateFieldName(field: string): boolean {
+	const lower = field.toLowerCase();
+	const directMatches = [
+		"date",
+		"scheduled",
+		"due",
+		"start",
+		"end",
+		"created",
+		"modified",
+		"datecreated",
+		"datemodified",
+	];
+	if (directMatches.includes(lower)) return true;
+	if (lower.endsWith("date")) return true;
+	if (lower.endsWith("at")) return true;
+	if (lower.endsWith("on")) return true;
+	return false;
+}
+
+/**
+ * Resolves relative date tokens to absolute dates.
+ * 
+ * Supported formats:
+ * - today / yesterday
+ * - -1 / -10 / -7d / -2w / -3m (past)
+ * - +1 / +10 / +7d / +2w / +1m (future)
+ * 
+ * @param token - Relative date token
+ * @param now - Optional reference date (defaults to current date)
+ * @returns Resolved Date or null if token is invalid
  */
 export function resolveRelativeDate(token: string, now?: Date): Date | null {
-  const base = now ? new Date(now) : new Date();
-  const baseDay = startOfDay(base);
-  const t = token.trim().toLowerCase();
+	const base = now ? new Date(now) : new Date();
+	const baseDay = startOfDay(base);
+	const trimmed = token.trim().toLowerCase();
 
-  if (t === "today") return baseDay;
-  if (t === "yesterday") return startOfDay(subDays(baseDay, 1));
+	if (trimmed === "today") return baseDay;
+	if (trimmed === "yesterday") return startOfDay(subDays(baseDay, 1));
 
-  // passados
-  if (/^-\d+$/.test(t)) {
-    const n = parseInt(t.slice(1), 10);
-    return startOfDay(subDays(baseDay, n));
-  }
-  if (/^-\d+d$/.test(t)) {
-    const n = parseInt(t.slice(1, -1), 10);
-    return startOfDay(subDays(baseDay, n));
-  }
-  if (/^-\d+w$/.test(t)) {
-    const n = parseInt(t.slice(1, -1), 10);
-    return startOfDay(subWeeks(baseDay, n));
-  }
-  if (/^-\d+m$/.test(t)) {
-    const n = parseInt(t.slice(1, -1), 10);
-    return startOfDay(subMonths(baseDay, n));
-  }
+	// Past dates
+	if (/^-\d+$/.test(trimmed)) {
+		const days = parseInt(trimmed.slice(1), 10);
+		return startOfDay(subDays(baseDay, days));
+	}
+	if (/^-\d+d$/.test(trimmed)) {
+		const days = parseInt(trimmed.slice(1, -1), 10);
+		return startOfDay(subDays(baseDay, days));
+	}
+	if (/^-\d+w$/.test(trimmed)) {
+		const weeks = parseInt(trimmed.slice(1, -1), 10);
+		return startOfDay(subWeeks(baseDay, weeks));
+	}
+	if (/^-\d+m$/.test(trimmed)) {
+		const months = parseInt(trimmed.slice(1, -1), 10);
+		return startOfDay(subMonths(baseDay, months));
+	}
 
-  // futuros
-  if (/^\+\d+$/.test(t)) {
-    const n = parseInt(t.slice(1), 10);
-    return startOfDay(addDays(baseDay, n));
-  }
-  if (/^\+\d+d$/.test(t)) {
-    const n = parseInt(t.slice(1, -1), 10);
-    return startOfDay(addDays(baseDay, n));
-  }
-  if (/^\+\d+w$/.test(t)) {
-    const n = parseInt(t.slice(1, -1), 10);
-    return startOfDay(addWeeks(baseDay, n));
-  }
-  if (/^\+\d+m$/.test(t)) {
-    const n = parseInt(t.slice(1, -1), 10);
-    return startOfDay(addMonths(baseDay, n));
-  }
+	// Future dates
+	if (/^\+\d+$/.test(trimmed)) {
+		const days = parseInt(trimmed.slice(1), 10);
+		return startOfDay(addDays(baseDay, days));
+	}
+	if (/^\+\d+d$/.test(trimmed)) {
+		const days = parseInt(trimmed.slice(1, -1), 10);
+		return startOfDay(addDays(baseDay, days));
+	}
+	if (/^\+\d+w$/.test(trimmed)) {
+		const weeks = parseInt(trimmed.slice(1, -1), 10);
+		return startOfDay(addWeeks(baseDay, weeks));
+	}
+	if (/^\+\d+m$/.test(trimmed)) {
+		const months = parseInt(trimmed.slice(1, -1), 10);
+		return startOfDay(addMonths(baseDay, months));
+	}
 
-  return null;
+	return null;
 }
 
-// ----------------------------------------------------
-// WHERE PARSER
-// ----------------------------------------------------
+// ============================================================================
+// WHERE Clause Parser
+// ============================================================================
+
+/**
+ * Parses a WHERE clause expression into a structured condition.
+ * 
+ * Supports:
+ * - Comparison operators: ==, !=, >, >=, <, <=
+ * - Between operator: field between value1 and value2
+ * 
+ * @param expr - WHERE clause expression string
+ * @returns Parsed condition object
+ * @throws Error if expression is invalid
+ */
 export function parseWhere(expr: string): ParsedCond {
-  const raw = expr.trim();
+	const trimmed = expr.trim();
 
-  // between
-  const betweenMatch = raw.match(
-    /^([a-zA-Z0-9_.-]+)\s+between\s+(.+)\s+and\s+(.+)$/i
-  );
-  if (betweenMatch) {
-    const field = betweenMatch[1].trim();
-    const v1raw = betweenMatch[2].trim();
-    const v2raw = betweenMatch[3].trim();
-    const isDateField = isDateFieldName(field);
+	// Parse "between" operator
+	const betweenMatch = trimmed.match(
+		/^([a-zA-Z0-9_.-]+)\s+between\s+(.+)\s+and\s+(.+)$/i
+	);
+	if (betweenMatch) {
+		const field = betweenMatch[1].trim();
+		const value1Raw = betweenMatch[2].trim();
+		const value2Raw = betweenMatch[3].trim();
+		const isDateField = isDateFieldName(field);
 
-    const v1 = parseValueToken(v1raw, isDateField);
-    const v2 = parseValueToken(v2raw, isDateField);
+		const value1 = parseValueToken(value1Raw, isDateField);
+		const value2 = parseValueToken(value2Raw, isDateField);
 
-    const valueType =
-      v1.valueType === "date" || v2.valueType === "date"
-        ? "date"
-        : v1.valueType;
+		const valueType =
+			value1.valueType === "date" || value2.valueType === "date"
+				? "date"
+				: value1.valueType;
 
-    return {
-      field,
-      op: "between",
-      value: v1.value,
-      value2: v2.value,
-      valueType,
-    };
-  }
+		return {
+			field,
+			op: "between",
+			value: value1.value,
+			value2: value2.value,
+			valueType,
+		};
+	}
 
-  const opRegex = /(==|!=|>=|<=|>|<)/;
-  const parts = raw.split(opRegex);
-  if (parts.length !== 3) {
-    throw new Error("expressão where inválida: " + expr);
-  }
+	// Parse comparison operators
+	const opRegex = /(==|!=|>=|<=|>|<)/;
+	const parts = trimmed.split(opRegex);
+	if (parts.length !== 3) {
+		throw new Error(`Invalid WHERE expression: ${expr}`);
+	}
 
-  const field = parts[0].trim();
-  const op = parts[1].trim() as ParsedCond["op"];
-  const valueToken = parts[2].trim();
-  const isDateField = isDateFieldName(field);
+	const field = parts[0].trim();
+	const op = parts[1].trim() as ParsedCond["op"];
+	const valueToken = parts[2].trim();
+	const isDateField = isDateFieldName(field);
 
-  const parsed = parseValueToken(valueToken, isDateField);
+	const parsed = parseValueToken(valueToken, isDateField);
 
-  return {
-    field,
-    op,
-    value: parsed.value,
-    valueType: parsed.valueType,
-  };
+	return {
+		field,
+		op,
+		value: parsed.value,
+		valueType: parsed.valueType,
+	};
 }
 
 /**
- * parse do valor do lado direito
- * - se o campo É de data → “0”, “today”, “-7d”, “+10d” viram Date
- * - se o campo NÃO é de data → “0” vira número, mas “-7d” e “+10d” ainda são aceitos como data
+ * Parses a value token from a WHERE clause.
+ * 
+ * Value parsing logic:
+ * - If field IS a date field → "0", "today", "-7d", "+10d" become Date
+ * - If field is NOT a date field → "0" becomes number, but "-7d" and "+10d" are still accepted as dates
+ * 
+ * @param token - Value token string
+ * @param forceDate - Whether to force date parsing
+ * @returns Parsed value and its type
  */
 function parseValueToken(
-  token: string,
-  forceDate: boolean
+	token: string,
+	forceDate: boolean
 ): { value: any; valueType: ParsedCond["valueType"] } {
-  const raw = token.trim();
+	const trimmed = token.trim();
 
-  // string com aspas
-  if (
-    (raw.startsWith("'") && raw.endsWith("'")) ||
-    (raw.startsWith('"') && raw.endsWith('"'))
-  ) {
-    const v = raw.slice(1, -1);
-    return { value: v, valueType: "string" };
-  }
+	// Quoted string
+	if (
+		(trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+		(trimmed.startsWith('"') && trimmed.endsWith('"'))
+	) {
+		const value = trimmed.slice(1, -1);
+		return { value, valueType: "string" };
+	}
 
-  const lower = raw.toLowerCase();
-  const looksRelative =
-    lower === "today" ||
-    lower === "yesterday" ||
-    lower.startsWith("-") ||
-    lower.startsWith("+");
+	const lower = trimmed.toLowerCase();
+	const looksRelative =
+		lower === "today" ||
+		lower === "yesterday" ||
+		lower.startsWith("-") ||
+		lower.startsWith("+");
 
-  // CAMPO DE DATA → tratar 0/today/relativos como data
-  if (forceDate) {
-    if (raw === "0" || lower === "today") {
-      return { value: startOfDay(new Date()), valueType: "date" };
-    }
-    const rel = resolveRelativeDate(raw);
-    if (rel) return { value: rel, valueType: "date" };
-  } else {
-    // campo não é de data, mas user usou -7d ou +10d → provavelmente queria data
-    if (looksRelative) {
-      const rel = resolveRelativeDate(raw);
-      if (rel) return { value: rel, valueType: "date" };
-    }
-  }
+	// DATE FIELD → treat 0/today/relatives as date
+	if (forceDate) {
+		if (trimmed === "0" || lower === "today") {
+			return { value: startOfDay(new Date()), valueType: "date" };
+		}
+		const relative = resolveRelativeDate(trimmed);
+		if (relative) return { value: relative, valueType: "date" };
+	} else {
+		// Field is not a date, but user used -7d or +10d → probably wanted date
+		if (looksRelative) {
+			const relative = resolveRelativeDate(trimmed);
+			if (relative) return { value: relative, valueType: "date" };
+		}
+	}
 
-  // ISO
-  if (looksLikeISODate(raw)) {
-    const d = toDate(raw);
-    if (d) return { value: d, valueType: "date" };
-  }
+	// ISO date
+	if (looksLikeISODate(trimmed)) {
+		const date = toDate(trimmed);
+		if (date) return { value: date, valueType: "date" };
+	}
 
-  // número
-  const num = Number(raw);
-  if (!Number.isNaN(num)) {
-    return { value: num, valueType: "number" };
-  }
+	// Number
+	const num = Number(trimmed);
+	if (!Number.isNaN(num)) {
+		return { value: num, valueType: "number" };
+	}
 
-  // fallback string
-  return { value: raw, valueType: "string" };
+	// Fallback: string
+	return { value: trimmed, valueType: "string" };
 }
 
-// ----------------------------------------------------
-// EVAL
-// ----------------------------------------------------
+// ============================================================================
+// Condition Evaluation
+// ============================================================================
+
+/**
+ * Evaluates a parsed condition against note properties.
+ * 
+ * @param props - Note properties object
+ * @param cond - Parsed condition
+ * @returns True if condition matches
+ */
 export function evalCond(
-  props: Record<string, any>,
-  cond: ParsedCond
+	props: Record<string, any>,
+	cond: ParsedCond
 ): boolean {
-  const leftRaw = props[cond.field];
-  if (leftRaw == null) return false;
+	const leftRaw = props[cond.field];
+	if (leftRaw == null) return false;
 
-  // datas
-  if (cond.valueType === "date") {
-    const leftDate =
-      leftRaw instanceof Date
-        ? startOfDay(leftRaw)
-        : looksLikeISODate(leftRaw)
-        ? startOfDay(toDate(leftRaw)!)
-        : null;
+	// Date comparisons
+	if (cond.valueType === "date") {
+		const leftDate =
+			leftRaw instanceof Date
+				? startOfDay(leftRaw)
+				: looksLikeISODate(leftRaw)
+				? startOfDay(toDate(leftRaw)!)
+				: null;
 
-    if (!leftDate) return false;
+		if (!leftDate) return false;
 
-    const rightDate = cond.value instanceof Date ? cond.value : null;
-    const rightDate2 = cond.value2 instanceof Date ? cond.value2 : null;
-    if (!rightDate) return false;
+		const rightDate = cond.value instanceof Date ? cond.value : null;
+		const rightDate2 = cond.value2 instanceof Date ? cond.value2 : null;
+		if (!rightDate) return false;
 
-    const leftTs = leftDate.getTime();
-    const rightTs = startOfDay(rightDate).getTime();
+		const leftTimestamp = leftDate.getTime();
+		const rightTimestamp = startOfDay(rightDate).getTime();
 
-    switch (cond.op) {
-      case "==":
-        return leftTs === rightTs;
-      case "!=":
-        return leftTs !== rightTs;
-      case ">":
-        return leftTs > rightTs;
-      case ">=":
-        return leftTs >= rightTs;
-      case "<":
-        return leftTs < rightTs;
-      case "<=":
-        return leftTs <= rightTs;
-      case "between":
-        if (!rightDate2) return false;
-        const toTs = startOfDay(rightDate2).getTime();
-        return leftTs >= rightTs && leftTs <= toTs;
-    }
-  }
+		switch (cond.op) {
+			case "==":
+				return leftTimestamp === rightTimestamp;
+			case "!=":
+				return leftTimestamp !== rightTimestamp;
+			case ">":
+				return leftTimestamp > rightTimestamp;
+			case ">=":
+				return leftTimestamp >= rightTimestamp;
+			case "<":
+				return leftTimestamp < rightTimestamp;
+			case "<=":
+				return leftTimestamp <= rightTimestamp;
+			case "between":
+				if (!rightDate2) return false;
+				const toTimestamp = startOfDay(rightDate2).getTime();
+				return (
+					leftTimestamp >= rightTimestamp &&
+					leftTimestamp <= toTimestamp
+				);
+		}
+	}
 
-  // números
-  if (cond.valueType === "number") {
-    const leftNum = Number(leftRaw);
-    if (isNaN(leftNum)) return false;
-    const rightNum = Number(cond.value);
-    switch (cond.op) {
-      case "==":
-        return leftNum === rightNum;
-      case "!=":
-        return leftNum !== rightNum;
-      case ">":
-        return leftNum > rightNum;
-      case ">=":
-        return leftNum >= rightNum;
-      case "<":
-        return leftNum < rightNum;
-      case "<=":
-        return leftNum <= rightNum;
-      case "between":
-        if (typeof cond.value2 !== "number") return false;
-        return leftNum >= rightNum && leftNum <= cond.value2;
-    }
-  }
+	// Number comparisons
+	if (cond.valueType === "number") {
+		const leftNum = Number(leftRaw);
+		if (isNaN(leftNum)) return false;
+		const rightNum = Number(cond.value);
+		switch (cond.op) {
+			case "==":
+				return leftNum === rightNum;
+			case "!=":
+				return leftNum !== rightNum;
+			case ">":
+				return leftNum > rightNum;
+			case ">=":
+				return leftNum >= rightNum;
+			case "<":
+				return leftNum < rightNum;
+			case "<=":
+				return leftNum <= rightNum;
+			case "between":
+				if (typeof cond.value2 !== "number") return false;
+				return leftNum >= rightNum && leftNum <= cond.value2;
+		}
+	}
 
-  // strings
-  const leftStr = String(leftRaw);
-  const rightStr = String(cond.value);
-  switch (cond.op) {
-    case "==":
-      return leftStr === rightStr;
-    case "!=":
-      return leftStr !== rightStr;
-    case ">":
-      return leftStr > rightStr;
-    case ">=":
-      return leftStr >= rightStr;
-    case "<":
-      return leftStr < rightStr;
-    case "<=":
-      return leftStr <= rightStr;
-    case "between":
-      return false;
-  }
+	// String comparisons
+	const leftStr = String(leftRaw);
+	const rightStr = String(cond.value);
+	switch (cond.op) {
+		case "==":
+			return leftStr === rightStr;
+		case "!=":
+			return leftStr !== rightStr;
+		case ">":
+			return leftStr > rightStr;
+		case ">=":
+			return leftStr >= rightStr;
+		case "<":
+			return leftStr < rightStr;
+		case "<=":
+			return leftStr <= rightStr;
+		case "between":
+			return false; // Between not supported for strings
+	}
+
+	return false;
 }
-

@@ -20,7 +20,7 @@ export function renderScatter(
 ): void {
 	const { background, drilldown = true } = spec.options ?? {};
 	if (data.rows.length === 0) {
-		container.createDiv({ cls: "prop-charts-empty", text: "Sem dados." });
+		container.createDiv({ cls: "prop-charts-empty", text: "No data available." });
 		return;
 	}
 
@@ -60,7 +60,7 @@ export function renderScatter(
 	if (xsNum.length === 0) {
 		container.createDiv({
 			cls: "prop-charts-empty",
-			text: "Sem dados (X não é numérico/data).",
+			text: "No data (X is not numeric/date).",
 		});
 		return;
 	}

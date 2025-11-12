@@ -1,522 +1,598 @@
-// src/query.ts
+/**
+ * Query Engine
+ * 
+ * Processes chart specifications and converts indexed notes into query results
+ * suitable for rendering. Handles filtering, aggregation, sorting, and transformations.
+ */
+
 import type {
-  ChartSpec,
-  IndexedNote,
-  QueryResult,
-  QueryResultRow
+	ChartSpec,
+	IndexedNote,
+	QueryResult,
+	QueryResultRow,
 } from "./types";
 import {
-  matchPath,
-  matchTags,
-  parseWhere,
-  evalCond,
-  looksLikeISODate,
-  toDate,
+	matchPath,
+	matchTags,
+	parseWhere,
+	evalCond,
+	looksLikeISODate,
+	toDate,
 } from "./utils";
 
-type SortDir = "asc" | "desc";
+// ============================================================================
+// Types
+// ============================================================================
 
-function normalizeDateKey(orig: any): { key: string | number | Date; isDate: boolean } {
-  if (typeof orig === "string") {
-    // pega só o dia se vier no formato ISO com hora
-    if (/^\d{4}-\d{2}-\d{2}/.test(orig)) {
-      const day = orig.slice(0, 10); // "2025-10-05"
-      return { key: day, isDate: true };
-    }
-  }
-  if (looksLikeISODate(orig)) {
-    const d = toDate(orig);
-    if (d) return { key: d, isDate: true };
-  }
-  return { key: orig, isDate: false };
+type SortDirection = "asc" | "desc";
+
+interface DateKeyNormalized {
+	key: string | number | Date;
+	isDate: boolean;
 }
 
-function compareXAsc(a: QueryResultRow, b: QueryResultRow): number {
-  const ax = a.x;
-  const bx = b.x;
-  if (ax instanceof Date && bx instanceof Date) {
-    return ax.getTime() - bx.getTime();
-  }
-  const sa = String(ax);
-  const sb = String(bx);
-  if (sa < sb) return -1;
-  if (sa > sb) return 1;
-  return 0;
+interface RawQueryRow {
+	x: string | number | Date;
+	y: number;
+	notes: string[];
+	series?: string;
+	props?: Record<string, any>;
+	_isDate: boolean;
+	_origX: any;
 }
 
-function compareXSeriesAsc(a: QueryResultRow, b: QueryResultRow): number {
-  const cx = compareXAsc(a, b);
-  if (cx !== 0) return cx;
-  const as = a.series ?? "";
-  const bs = b.series ?? "";
-  if (as < bs) return -1;
-  if (as > bs) return 1;
-  return 0;
+interface GroupAggregation {
+	sum: number;
+	count: number;
+	min: number;
+	max: number;
+	notes: string[];
+	xRep: any;
+	isDate: boolean;
+	series?: string;
+	props?: Record<string, any>;
 }
 
-function parseRollingWindow(rolling: any): number {
-  if (rolling == null) return 0;
-  if (typeof rolling === "number") {
-    return rolling > 0 ? Math.floor(rolling) : 0;
-  }
-  if (typeof rolling === "string") {
-    const m = rolling.trim().match(/^(\d+)/);
-    if (m) {
-      const n = Number(m[1]);
-      return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-    }
-  }
-  throw new Error(`aggregate.rolling inválido: ${String(rolling)}`);
+// ============================================================================
+// Constants
+// ============================================================================
+
+const NO_SERIES_KEY = "__no_series__";
+const SERIES_X_SEPARATOR = "||";
+const MILLISECONDS_PER_MINUTE = 60000;
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Normalizes a date key value.
+ * Extracts day portion from ISO strings with time, converts ISO strings to Date objects.
+ * 
+ * @param original - Original value to normalize
+ * @returns Normalized key and whether it's a date
+ */
+function normalizeDateKey(original: any): DateKeyNormalized {
+	if (typeof original === "string") {
+		// Extract only the day portion if it comes in ISO format with time
+		if (/^\d{4}-\d{2}-\d{2}/.test(original)) {
+			const day = original.slice(0, 10); // "2025-10-05"
+			return { key: day, isDate: true };
+		}
+	}
+	if (looksLikeISODate(original)) {
+		const date = toDate(original);
+		if (date) return { key: date, isDate: true };
+	}
+	return { key: original, isDate: false };
 }
 
 /**
- * Soma cumulativa POR SÉRIE na ordem atual dos rows.
- * Ou seja: primeiro aplicamos sort.x (asc/desc), depois chamamos isso.
+ * Compares two rows by X value (ascending).
+ * Dates are compared by timestamp, other values as strings.
+ */
+function compareXAsc(a: QueryResultRow, b: QueryResultRow): number {
+	const ax = a.x;
+	const bx = b.x;
+	if (ax instanceof Date && bx instanceof Date) {
+		return ax.getTime() - bx.getTime();
+	}
+	const strA = String(ax);
+	const strB = String(bx);
+	if (strA < strB) return -1;
+	if (strA > strB) return 1;
+	return 0;
+}
+
+/**
+ * Compares two rows by X value, then by series (ascending).
+ */
+function compareXSeriesAsc(a: QueryResultRow, b: QueryResultRow): number {
+	const xComparison = compareXAsc(a, b);
+	if (xComparison !== 0) return xComparison;
+	const seriesA = a.series ?? "";
+	const seriesB = b.series ?? "";
+	if (seriesA < seriesB) return -1;
+	if (seriesA > seriesB) return 1;
+	return 0;
+}
+
+/**
+ * Parses rolling window size from configuration.
+ * 
+ * @param rolling - Rolling window value (number or string)
+ * @returns Window size in number of points
+ * @throws Error if value is invalid
+ */
+function parseRollingWindow(rolling: any): number {
+	if (rolling == null) return 0;
+	if (typeof rolling === "number") {
+		return rolling > 0 ? Math.floor(rolling) : 0;
+	}
+	if (typeof rolling === "string") {
+		const match = rolling.trim().match(/^(\d+)/);
+		if (match) {
+			const num = Number(match[1]);
+			return Number.isFinite(num) && num > 0 ? Math.floor(num) : 0;
+		}
+	}
+	throw new Error(`Invalid aggregate.rolling: ${String(rolling)}`);
+}
+
+/**
+ * Applies cumulative sum transformation PER SERIES in the current row order.
+ * 
+ * Note: This should be called AFTER applying sort.x (asc/desc).
+ * 
+ * @param rows - Rows to transform (should already be sorted)
+ * @returns Rows with cumulative Y values
  */
 function applyCumulativeInOrder(rows: QueryResultRow[]): QueryResultRow[] {
-  const accBySeries = new Map<string, number>();
-  const out: QueryResultRow[] = [];
+	const accumulatorBySeries = new Map<string, number>();
+	const output: QueryResultRow[] = [];
 
-  for (const r of rows) {
-    const key = r.series ?? "__no_series__";
-    const prev = accBySeries.get(key) ?? 0;
-    const next = prev + r.y;
-    accBySeries.set(key, next);
-    out.push({ ...r, y: next });
-  }
-  return out;
+	for (const row of rows) {
+		const seriesKey = row.series ?? NO_SERIES_KEY;
+		const previous = accumulatorBySeries.get(seriesKey) ?? 0;
+		const next = previous + row.y;
+		accumulatorBySeries.set(seriesKey, next);
+		output.push({ ...row, y: next });
+	}
+	return output;
 }
 
 /**
- * Média móvel POR SÉRIE na ordem atual dos rows.
- * Ex.: rolling = 7 → usa até os últimos 7 pontos daquela série.
+ * Applies rolling average transformation PER SERIES in the current row order.
+ * 
+ * Example: rolling = 7 → uses up to the last 7 points of that series.
+ * 
+ * @param rows - Rows to transform (should already be sorted)
+ * @param rolling - Rolling window configuration
+ * @returns Rows with rolling average Y values
  */
 function applyRollingInOrder(
-  rows: QueryResultRow[],
-  rolling: any
+	rows: QueryResultRow[],
+	rolling: any
 ): QueryResultRow[] {
-  const windowSize = parseRollingWindow(rolling);
-  if (!windowSize || windowSize <= 1) {
-    return [...rows];
-  }
+	const windowSize = parseRollingWindow(rolling);
+	if (!windowSize || windowSize <= 1) {
+		return [...rows];
+	}
 
-  const bufBySeries = new Map<string, number[]>();
-  const sumBySeries = new Map<string, number>();
-  const out: QueryResultRow[] = [];
+	const bufferBySeries = new Map<string, number[]>();
+	const sumBySeries = new Map<string, number>();
+	const output: QueryResultRow[] = [];
 
-  for (const r of rows) {
-    const key = r.series ?? "__no_series__";
+	for (const row of rows) {
+		const seriesKey = row.series ?? NO_SERIES_KEY;
 
-    let buf = bufBySeries.get(key);
-    if (!buf) {
-      buf = [];
-      bufBySeries.set(key, buf);
-    }
-    let sum = sumBySeries.get(key) ?? 0;
+		let buffer = bufferBySeries.get(seriesKey);
+		if (!buffer) {
+			buffer = [];
+			bufferBySeries.set(seriesKey, buffer);
+		}
+		let sum = sumBySeries.get(seriesKey) ?? 0;
 
-    buf.push(r.y);
-    sum += r.y;
-    if (buf.length > windowSize) {
-      const removed = buf.shift()!;
-      sum -= removed;
-    }
-    sumBySeries.set(key, sum);
+		buffer.push(row.y);
+		sum += row.y;
+		if (buffer.length > windowSize) {
+			const removed = buffer.shift()!;
+			sum -= removed;
+		}
+		sumBySeries.set(seriesKey, sum);
 
-    const denom = buf.length || 1;
-    const avg = sum / denom;
+		const denominator = buffer.length || 1;
+		const average = sum / denominator;
 
-    out.push({ ...r, y: avg });
-  }
+		output.push({ ...row, y: average });
+	}
 
-  return out;
+	return output;
 }
+
+// ============================================================================
+// Query Engine Class
+// ============================================================================
 
 export class PropChartsQueryEngine {
-  private getIndex: () => IndexedNote[];
-  private defaultPaths: string[];
+	private getIndex: () => IndexedNote[];
+	private defaultPaths: string[];
 
-  constructor(getIndex: () => IndexedNote[], defaultPaths: string[]) {
-    this.getIndex = getIndex;
-    this.defaultPaths = defaultPaths;
-  }
+	constructor(getIndex: () => IndexedNote[], defaultPaths: string[]) {
+		this.getIndex = getIndex;
+		this.defaultPaths = defaultPaths;
+	}
 
-  run(spec: ChartSpec): QueryResult {
-    const all = this.getIndex();
+	/**
+	 * Main entry point: runs a query based on chart specification.
+	 */
+	run(spec: ChartSpec): QueryResult {
+		const allNotes = this.getIndex();
 
-    // --- filtros básicos: paths + tags ------------------------------
-    const sourcePaths =
-      spec.source?.paths && spec.source.paths.length
-        ? spec.source.paths
-        : this.defaultPaths;
+		// Apply basic filters: paths + tags
+		const sourcePaths =
+			spec.source?.paths && spec.source.paths.length
+				? spec.source.paths
+				: this.defaultPaths;
 
-    const sourceTags =
-      spec.source?.tags && spec.source.tags.length
-        ? spec.source.tags
-        : [];
+		const sourceTags =
+			spec.source?.tags && spec.source.tags.length
+				? spec.source.tags
+				: [];
 
-    const filtered: IndexedNote[] = [];
+		const filtered: IndexedNote[] = [];
 
-    for (const note of all) {
-      // paths: se não tiver nenhum (nem no spec nem default), não filtra por path
-      const passPath =
-        sourcePaths && sourcePaths.length
-          ? matchPath(note.path, sourcePaths)
-          : true;
+		for (const note of allNotes) {
+			// Path filter: if no paths specified (neither in spec nor default), don't filter by path
+			const passesPath =
+				sourcePaths && sourcePaths.length
+					? matchPath(note.path, sourcePaths)
+					: true;
 
-      // tags: se não tiver tags no spec, não filtra por tag
-      const passTag =
-        sourceTags && sourceTags.length
-          ? matchTags(note.props, sourceTags)
-          : true;
+			// Tag filter: if no tags in spec, don't filter by tag
+			const passesTag =
+				sourceTags && sourceTags.length
+					? matchTags(note.props, sourceTags)
+					: true;
 
-      // *** AQUI ESTAVA O BUG ***
-      // antes era: if (!(passPath || passTag)) continue;
-      // agora: a nota precisa passar em paths E tags
-      if (!passPath || !passTag) continue;
+			// Note must pass BOTH path AND tag filters
+			if (!passesPath || !passesTag) continue;
 
-      // where
-      let passWhere = true;
-      if (spec.source?.where && spec.source.where.length > 0) {
-        for (const condStr of spec.source.where) {
-          let parsed;
-          try {
-            parsed = parseWhere(condStr);
-          } catch (err) {
-            throw new Error(
-              `Condição inválida: ${condStr} (${(err as Error).message})`
-            );
-          }
-          if (!evalCond(note.props, parsed)) {
-            passWhere = false;
-            break;
-          }
-        }
-      }
-      if (!passWhere) continue;
+			// Where conditions
+			let passesWhere = true;
+			if (spec.source?.where && spec.source.where.length > 0) {
+				for (const conditionStr of spec.source.where) {
+					let parsed;
+					try {
+						parsed = parseWhere(conditionStr);
+					} catch (err) {
+						throw new Error(
+							`Invalid condition: ${conditionStr} (${(err as Error).message})`
+						);
+					}
+					if (!evalCond(note.props, parsed)) {
+						passesWhere = false;
+						break;
+					}
+				}
+			}
+			if (!passesWhere) continue;
 
-      filtered.push(note);
-    }
+			filtered.push(note);
+		}
 
-    // tipos especiais
-    if (spec.type === "gantt") {
-      return this.runGantt(spec, filtered);
-    }
-    if (spec.type === "table") {
-      return this.runTable(spec, filtered);
-    }
+		// Route to specialized handlers
+		if (spec.type === "gantt") {
+			return this.runGantt(spec, filtered);
+		}
+		if (spec.type === "table") {
+			return this.runTable(spec, filtered);
+		}
 
-    // padrão (bar / line / stacked-area / pie / scatter / stacked-bar)
-    return this.runStandard(spec, filtered);
-  }
+		// Standard charts (bar / line / stacked-area / pie / scatter / stacked-bar)
+		return this.runStandard(spec, filtered);
+	}
 
-  // -------------------------------------------------------------
-  // TABLE
-  // -------------------------------------------------------------
-  private runTable(spec: ChartSpec, notes: IndexedNote[]): QueryResult {
-    const rows: QueryResultRow[] = notes.map((note) => ({
-      x: note.path,
-      y: 0,
-      notes: [note.path],
-      props: note.props,
-    }));
+	// ============================================================================
+	// Specialized Query Handlers
+	// ============================================================================
 
-    return {
-      rows,
-      xField: spec.encoding?.x,
-      yField: spec.encoding?.y,
-    };
-  }
+	/**
+	 * Handles table chart queries.
+	 */
+	private runTable(spec: ChartSpec, notes: IndexedNote[]): QueryResult {
+		const rows: QueryResultRow[] = notes.map((note) => ({
+			x: note.path,
+			y: 0,
+			notes: [note.path],
+			props: note.props,
+		}));
 
-  // -------------------------------------------------------------
-  // GANTT
-  // -------------------------------------------------------------
-  private runGantt(spec: ChartSpec, notes: IndexedNote[]): QueryResult {
-    const enc: any = spec.encoding ?? {};
-    const startField: string | undefined = enc.start;
-    const endField: string | undefined = enc.end;
-    const labelField: string | undefined = enc.label ?? enc.x;
-    const seriesField: string | undefined = enc.series;
-    const durationField: string | undefined = enc.duration;
-    const dueField: string | undefined = enc.due;
+		return {
+			rows,
+			xField: spec.encoding?.x,
+			yField: spec.encoding?.y,
+		};
+	}
 
-    const rows: QueryResultRow[] = [];
+	/**
+	 * Handles Gantt chart queries.
+	 */
+	private runGantt(spec: ChartSpec, notes: IndexedNote[]): QueryResult {
+		const encoding: any = spec.encoding ?? {};
+		const startField: string | undefined = encoding.start;
+		const endField: string | undefined = encoding.end;
+		const labelField: string | undefined = encoding.label ?? encoding.x;
+		const seriesField: string | undefined = encoding.series;
+		const durationField: string | undefined = encoding.duration;
+		const dueField: string | undefined = encoding.due;
 
-    for (const note of notes) {
-      const props = note.props ?? {};
-      const pickScalar = (v: any) => (Array.isArray(v) ? v[0] : v);
+		const rows: QueryResultRow[] = [];
 
-      // end obrigatório
-      let endDate: Date | null = null;
-      if (endField) {
-        const rawEnd = pickScalar(props[endField]);
-        const d = toDate(rawEnd);
-        if (d) endDate = d;
-      }
-      if (!endDate) continue;
+		for (const note of notes) {
+			const props = note.props ?? {};
+			const pickScalar = (value: any) => (Array.isArray(value) ? value[0] : value);
 
-      // start: campo ou derivado de duração
-      let startDate: Date | null = null;
-      if (startField) {
-        const rawStart = pickScalar(props[startField]);
-        const d = toDate(rawStart);
-        if (d) startDate = d;
-      }
-      if (!startDate && durationField) {
-        const rawDur = pickScalar(props[durationField]);
-        const durMin = Number(rawDur);
-        if (!Number.isNaN(durMin)) {
-          startDate = new Date(endDate.getTime() - durMin * 60000);
-        }
-      }
-      if (!startDate) startDate = new Date(endDate.getTime());
+			// End date is required
+			let endDate: Date | null = null;
+			if (endField) {
+				const rawEnd = pickScalar(props[endField]);
+				const date = toDate(rawEnd);
+				if (date) endDate = date;
+			}
+			if (!endDate) continue;
 
-      // due opcional
-      let dueDate: Date | undefined;
-      if (dueField) {
-        const rawDue = pickScalar(props[dueField]);
-        const d = toDate(rawDue);
-        if (d) dueDate = d;
-      }
+			// Start date: from field or derived from duration
+			let startDate: Date | null = null;
+			if (startField) {
+				const rawStart = pickScalar(props[startField]);
+				const date = toDate(rawStart);
+				if (date) startDate = date;
+			}
+			if (!startDate && durationField) {
+				const rawDuration = pickScalar(props[durationField]);
+				const durationMinutes = Number(rawDuration);
+				if (!Number.isNaN(durationMinutes)) {
+					startDate = new Date(
+						endDate.getTime() - durationMinutes * MILLISECONDS_PER_MINUTE
+					);
+				}
+			}
+			if (!startDate) startDate = new Date(endDate.getTime());
 
-      // label
-      let xLabel: any;
-      if (labelField) {
-        let v = pickScalar(props[labelField]);
-        if (v == null || v === "") v = note.path;
-        xLabel = v;
-      } else {
-        xLabel = note.path;
-      }
+			// Due date (optional)
+			let dueDate: Date | undefined;
+			if (dueField) {
+				const rawDue = pickScalar(props[dueField]);
+				const date = toDate(rawDue);
+				if (date) dueDate = date;
+			}
 
-      // série
-      let series: string | undefined;
-      if (seriesField) {
-        const rawS = pickScalar(props[seriesField]);
-        if (rawS != null) series = String(rawS);
-      }
+			// Label
+			let xLabel: any;
+			if (labelField) {
+				let value = pickScalar(props[labelField]);
+				if (value == null || value === "") value = note.path;
+				xLabel = value;
+			} else {
+				xLabel = note.path;
+			}
 
-      const row: QueryResultRow = {
-        x: xLabel,
-        y: 0,
-        notes: [note.path],
-        series,
-        start: startDate,
-        end: endDate,
-        props,
-      };
-      if (dueDate) (row as any).due = dueDate;
-      rows.push(row);
-    }
+			// Series
+			let series: string | undefined;
+			if (seriesField) {
+				const rawSeries = pickScalar(props[seriesField]);
+				if (rawSeries != null) series = String(rawSeries);
+			}
 
-    rows.sort((a, b) => {
-      const ta = a.start ? a.start.getTime() : 0;
-      const tb = b.start ? b.start.getTime() : 0;
-      return ta - tb;
-    });
+			const row: QueryResultRow = {
+				x: xLabel,
+				y: 0,
+				notes: [note.path],
+				series,
+				start: startDate,
+				end: endDate,
+				props,
+			};
+			if (dueDate) (row as any).due = dueDate;
+			rows.push(row);
+		}
 
-    return {
-      rows,
-      xField: labelField,
-      yField: endField,
-    };
-  }
+		// Sort by start date
+		rows.sort((a, b) => {
+			const timeA = a.start ? a.start.getTime() : 0;
+			const timeB = b.start ? b.start.getTime() : 0;
+			return timeA - timeB;
+		});
 
-  // -------------------------------------------------------------
-  // STANDARD (bar / line / stacked-area / pie / scatter / stacked-bar)
-  // -------------------------------------------------------------
-  private runStandard(spec: ChartSpec, notes: IndexedNote[]): QueryResult {
-    const xField = spec.encoding?.x;
-    const yField = spec.encoding?.y;
-    const seriesField = spec.encoding?.series;
+		return {
+			rows,
+			xField: labelField,
+			yField: endField,
+		};
+	}
 
-    if (!xField) {
-      throw new Error("encoding.x é obrigatório.");
-    }
+	/**
+	 * Handles standard chart queries (bar, line, stacked-area, pie, scatter, stacked-bar).
+	 */
+	private runStandard(spec: ChartSpec, notes: IndexedNote[]): QueryResult {
+		const xField = spec.encoding?.x;
+		const yField = spec.encoding?.y;
+		const seriesField = spec.encoding?.series;
 
-    const aggCfg: any = spec.aggregate ?? {};
-    const aggMode: string | null = aggCfg.y ?? null;
-    const cumulative: boolean = !!aggCfg.cumulative;
-    const rolling = aggCfg.rolling;
+		if (!xField) {
+			throw new Error("encoding.x is required.");
+		}
 
-    if (!yField && aggMode !== "count") {
-      throw new Error("encoding.y é obrigatório (exceto quando aggregate.y = 'count').");
-    }
+		const aggregateConfig: any = spec.aggregate ?? {};
+		const aggregateMode: string | null = aggregateConfig.y ?? null;
+		const cumulative: boolean = !!aggregateConfig.cumulative;
+		const rolling = aggregateConfig.rolling;
 
-    interface RawRow {
-      x: string | number | Date;
-      y: number;
-      notes: string[];
-      series?: string;
-      props?: Record<string, any>;
-      _isDate: boolean;
-      _origX: any;
-    }
+		if (!yField && aggregateMode !== "count") {
+			throw new Error(
+				"encoding.y is required (except when aggregate.y = 'count')."
+			);
+		}
 
-    const rowsRaw: RawRow[] = [];
+		// Build raw rows from notes
+		const rawRows: RawQueryRow[] = [];
 
-    for (const note of notes) {
-      const props = note.props ?? {};
-      const pickScalar = (v: any) => (Array.isArray(v) ? v[0] : v);
+		for (const note of notes) {
+			const props = note.props ?? {};
+			const pickScalar = (value: any) => (Array.isArray(value) ? value[0] : value);
 
-      const rawX = pickScalar(props[xField]);
-      if (rawX == null) continue;
+			const rawX = pickScalar(props[xField]);
+			if (rawX == null) continue;
 
-      const norm = normalizeDateKey(rawX);
-      const xToUse = norm.key;
-      const isDate = norm.isDate;
+			const normalized = normalizeDateKey(rawX);
+			const xToUse = normalized.key;
+			const isDate = normalized.isDate;
 
-      let series: string | undefined;
-      if (seriesField) {
-        const rawS = pickScalar(props[seriesField]);
-        if (rawS != null && String(rawS).trim() !== "") {
-          series = String(rawS);
-        }
-      }
+			let series: string | undefined;
+			if (seriesField) {
+				const rawSeries = pickScalar(props[seriesField]);
+				if (rawSeries != null && String(rawSeries).trim() !== "") {
+					series = String(rawSeries);
+				}
+			}
 
-      let yNum: number;
-      if (aggMode === "count") {
-        yNum = 1;
-      } else {
-        const rawY = pickScalar(props[yField!]);
-        if (rawY == null) continue;
-        const n = Number(rawY);
-        if (Number.isNaN(n)) continue;
-        yNum = n;
-      }
+			let yValue: number;
+			if (aggregateMode === "count") {
+				yValue = 1;
+			} else {
+				const rawY = pickScalar(props[yField!]);
+				if (rawY == null) continue;
+				const num = Number(rawY);
+				if (Number.isNaN(num)) continue;
+				yValue = num;
+			}
 
-      rowsRaw.push({
-        x: xToUse,
-        y: yNum,
-        notes: [note.path],
-        series,
-        props,
-        _isDate: isDate,
-        _origX: rawX,
-      });
-    }
+			rawRows.push({
+				x: xToUse,
+				y: yValue,
+				notes: [note.path],
+				series,
+				props,
+				_isDate: isDate,
+				_origX: rawX,
+			});
+		}
 
-    if (rowsRaw.length === 0) {
-      return { rows: [], xField, yField };
-    }
+		if (rawRows.length === 0) {
+			return { rows: [], xField, yField };
+		}
 
-    let aggregated: QueryResultRow[] = [];
+		// Aggregate rows
+		let aggregated: QueryResultRow[] = [];
 
-    if (aggMode) {
-      // agrega por (x, série)
-      type GroupAgg = {
-        sum: number;
-        count: number;
-        min: number;
-        max: number;
-        notes: string[];
-        xRep: any;
-        isDate: boolean;
-        series?: string;
-        props?: Record<string, any>;
-      };
+		if (aggregateMode) {
+			// Aggregate by (x, series)
+			const grouped = new Map<string, GroupAggregation>();
 
-      const grouped = new Map<string, GroupAgg>();
+			for (const row of rawRows) {
+				const seriesKey = row.series ?? "";
+				const xKey =
+					row.x instanceof Date
+						? row.x.toISOString().slice(0, 10)
+						: String(row.x);
+				const groupKey = seriesKey + SERIES_X_SEPARATOR + xKey;
 
-      for (const row of rowsRaw) {
-        const sKey = row.series ?? "";
-        const xKey =
-          row.x instanceof Date
-            ? row.x.toISOString().slice(0, 10)
-            : String(row.x);
-        const key = sKey + "||" + xKey;
+				const group: GroupAggregation = grouped.get(groupKey) ?? {
+					sum: 0,
+					count: 0,
+					min: Number.POSITIVE_INFINITY,
+					max: Number.NEGATIVE_INFINITY,
+					notes: [],
+					xRep: row.x,
+					isDate: row._isDate,
+					series: row.series,
+					props: row.props,
+				};
 
-        const g: GroupAgg = grouped.get(key) ?? {
-          sum: 0,
-          count: 0,
-          min: Number.POSITIVE_INFINITY,
-          max: Number.NEGATIVE_INFINITY,
-          notes: [],
-          xRep: row.x,
-          isDate: row._isDate,
-          series: row.series,
-          props: row.props,
-        };
+				group.sum += row.y;
+				group.count += 1;
+				if (row.y < group.min) group.min = row.y;
+				if (row.y > group.max) group.max = row.y;
+				group.notes.push(...row.notes);
+				group.props = row.props ?? group.props;
 
-        g.sum += row.y;
-        g.count += 1;
-        if (row.y < g.min) g.min = row.y;
-        if (row.y > g.max) g.max = row.y;
-        g.notes.push(...row.notes);
-        g.props = row.props ?? g.props;
+				grouped.set(groupKey, group);
+			}
 
-        grouped.set(key, g);
-      }
+			for (const [, group] of grouped) {
+				let y = group.sum;
+				switch (aggregateMode) {
+					case "sum":
+						y = group.sum;
+						break;
+					case "avg":
+						y = group.sum / group.count;
+						break;
+					case "min":
+						y = group.min;
+						break;
+					case "max":
+						y = group.max;
+						break;
+					case "count":
+						y = group.count;
+						break;
+				}
+				aggregated.push({
+					x: group.xRep,
+					y,
+					notes: group.notes,
+					series: group.series,
+					props: group.props,
+				});
+			}
+		} else {
+			aggregated = rawRows.map((row) => ({
+				x: row.x,
+				y: row.y,
+				notes: row.notes,
+				series: row.series,
+				props: row.props,
+			}));
+		}
 
-      for (const [, g] of grouped) {
-        let y = g.sum;
-        switch (aggMode) {
-          case "sum":
-            y = g.sum;
-            break;
-          case "avg":
-            y = g.sum / g.count;
-            break;
-          case "min":
-            y = g.min;
-            break;
-          case "max":
-            y = g.max;
-            break;
-          case "count":
-            y = g.count;
-            break;
-        }
-        aggregated.push({
-          x: g.xRep,
-          y,
-          notes: g.notes,
-          series: g.series,
-          props: g.props,
-        });
-      }
-    } else {
-      aggregated = rowsRaw.map((r) => ({
-        x: r.x,
-        y: r.y,
-        notes: r.notes,
-        series: r.series,
-        props: r.props,
-      }));
-    }
+		if (aggregated.length === 0) {
+			return { rows: [], xField, yField };
+		}
 
-    if (aggregated.length === 0) {
-      return { rows: [], xField, yField };
-    }
+		// Sort: define ORDER before transformations
+		const sortDirection: SortDirection =
+			spec.sort?.x === "desc" ? "desc" : "asc";
+		aggregated.sort((a, b) => {
+			const comparison = compareXSeriesAsc(a, b);
+			return sortDirection === "asc" ? comparison : -comparison;
+		});
 
-    // sort.x: definimos a ORDEM antes das transformações
-    const sortDir: SortDir = spec.sort?.x === "desc" ? "desc" : "asc";
-    aggregated.sort((a, b) => {
-      const cmp = compareXSeriesAsc(a, b);
-      return sortDir === "asc" ? cmp : -cmp;
-    });
+		// Transformations: cumulative / rolling only for line/stacked-area
+		if (
+			(cumulative || rolling) &&
+			!(spec.type === "line" || spec.type === "stacked-area")
+		) {
+			throw new Error(
+				"aggregate.cumulative / aggregate.rolling are only supported for type: 'line' or 'stacked-area'."
+			);
+		}
+		if (cumulative && rolling) {
+			throw new Error(
+				"It is not yet possible to use 'cumulative' and 'rolling' together in the same chart."
+			);
+		}
 
-    // transforms: cumulative / rolling só para line/stacked-area
-    if ((cumulative || rolling) && !(spec.type === "line" || spec.type === "stacked-area")) {
-      throw new Error(
-        "aggregate.cumulative / aggregate.rolling só são suportados em type: 'line' ou 'stacked-area'."
-      );
-    }
-    if (cumulative && rolling) {
-      throw new Error(
-        "Ainda não é possível usar 'cumulative' e 'rolling' juntos no mesmo gráfico."
-      );
-    }
+		let transformed: QueryResultRow[] = aggregated;
 
-    let transformed: QueryResultRow[] = aggregated;
+		if (rolling) {
+			transformed = applyRollingInOrder(aggregated, rolling);
+		} else if (cumulative) {
+			transformed = applyCumulativeInOrder(aggregated);
+		}
 
-    if (rolling) {
-      transformed = applyRollingInOrder(aggregated, rolling);
-    } else if (cumulative) {
-      transformed = applyCumulativeInOrder(aggregated);
-    }
-
-    // NÃO reordenamos mais depois: a ordem usada é a mesma do sort.x
-    return { rows: transformed, xField, yField };
-  }
+		// Do NOT re-sort after transformations: the order used is the same as sort.x
+		return { rows: transformed, xField, yField };
+	}
 }
-

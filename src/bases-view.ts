@@ -1,4 +1,10 @@
-// src/bases-view.ts
+/**
+ * Bases View Integration
+ * 
+ * Integrates Chart Notes as a layout option in Obsidian Bases.
+ * Handles data transformation from Bases format to chart-ready format.
+ */
+
 import {
 	BasesView,
 	type QueryController,
@@ -6,6 +12,10 @@ import {
 } from "obsidian";
 import type { ChartSpec, QueryResult, QueryResultRow } from "./types";
 import type { PropChartsRenderer, RenderContext } from "./renderer";
+
+// ============================================================================
+// Constants
+// ============================================================================
 
 export const CHARTNOTES_BASES_VIEW_TYPE = "chartnotes-view";
 
@@ -18,35 +28,62 @@ const CHART_TYPES = [
 	"scatter",
 	"gantt",
 ] as const;
-type AllowedChartType = (typeof CHART_TYPES)[number];
-
-function normalizeChartType(raw: unknown): AllowedChartType {
-	const t = String(raw ?? "bar").trim().toLowerCase();
-	return (CHART_TYPES.includes(t as AllowedChartType) ? t : "bar") as AllowedChartType;
-}
 
 const AGGREGATION_MODES = ["sum", "count", "cumulative-sum"] as const;
-type AggregationMode = (typeof AGGREGATION_MODES)[number];
-
-function normalizeAggregationMode(raw: unknown): AggregationMode {
-	const t = String(raw ?? "sum").trim().toLowerCase();
-	return (AGGREGATION_MODES.includes(t as AggregationMode) ? t : "sum") as AggregationMode;
-}
 
 const X_BUCKETS = ["auto", "none", "day", "week", "month", "quarter", "year"] as const;
-type XBucket = (typeof X_BUCKETS)[number];
-
-function normalizeXBucket(raw: unknown): XBucket {
-	const t = String(raw ?? "auto").trim().toLowerCase();
-	return (X_BUCKETS.includes(t as XBucket) ? t : "auto") as XBucket;
-}
-
-type SelectedProp = {
-	id: string | null;
-	name: string | null;
-};
 
 const MISSING_LABEL = "(missing)";
+const NO_SERIES_KEY = "__no_series__";
+const DEFAULT_BLOCK_MINUTES = 60;
+const MILLISECONDS_PER_MINUTE = 60000;
+
+// ============================================================================
+// Types
+// ============================================================================
+
+type AllowedChartType = (typeof CHART_TYPES)[number];
+type AggregationMode = (typeof AGGREGATION_MODES)[number];
+type XBucket = (typeof X_BUCKETS)[number];
+
+interface SelectedProp {
+	id: string | null;
+	name: string | null;
+}
+
+// ============================================================================
+// Normalization Functions
+// ============================================================================
+
+/**
+ * Normalizes chart type from user input to allowed type.
+ */
+function normalizeChartType(raw: unknown): AllowedChartType {
+	const type = String(raw ?? "bar").trim().toLowerCase();
+	return (CHART_TYPES.includes(type as AllowedChartType)
+		? type
+		: "bar") as AllowedChartType;
+}
+
+/**
+ * Normalizes aggregation mode from user input to allowed mode.
+ */
+function normalizeAggregationMode(raw: unknown): AggregationMode {
+	const mode = String(raw ?? "sum").trim().toLowerCase();
+	return (AGGREGATION_MODES.includes(mode as AggregationMode)
+		? mode
+		: "sum") as AggregationMode;
+}
+
+/**
+ * Normalizes X bucket mode from user input to allowed mode.
+ */
+function normalizeXBucket(raw: unknown): XBucket {
+	const bucket = String(raw ?? "auto").trim().toLowerCase();
+	return (X_BUCKETS.includes(bucket as XBucket)
+		? bucket
+		: "auto") as XBucket;
+}
 
 export class ChartNotesBasesView extends BasesView {
 	readonly type = CHARTNOTES_BASES_VIEW_TYPE;
@@ -98,7 +135,7 @@ export class ChartNotesBasesView extends BasesView {
 		const yProp = this.getPropFromConfig("yProperty");
 		let seriesProp = this.getPropFromConfig("seriesProperty");
 		if (isPie) {
-			// Pie nunca usa séries: sempre agregamos só por categoria.
+			// Pie charts never use series: always aggregate by category only
 			seriesProp = { id: null, name: null };
 		}
 		const startProp = this.getPropFromConfig("startProperty");
@@ -131,8 +168,8 @@ export class ChartNotesBasesView extends BasesView {
 			return;
 		}
 
-		// Para Gantt, o label vem de uma property própria se existir;
-		// senão cai no mesmo X padrão.
+		// For Gantt, label comes from a dedicated property if it exists;
+		// otherwise falls back to the default X property
 		const labelPropForGantt: SelectedProp =
 			isGantt && ganttLabelProp.id
 				? ganttLabelProp
@@ -216,7 +253,9 @@ export class ChartNotesBasesView extends BasesView {
 		this.renderer.render(this.rootEl, spec, result, ctx);
 	}
 
-	// ---------- helpers de propriedades/valores ----------
+	// ============================================================================
+	// Property and Value Helpers
+	// ============================================================================
 
 	private getPropFromConfig(key: string): SelectedProp {
 		const cfg: any = (this as any).config;
@@ -285,21 +324,29 @@ export class ChartNotesBasesView extends BasesView {
 		return String(a ?? "").localeCompare(String(b ?? ""));
 	}
 
-	// ---------- bucketing de datas ----------
+	// ============================================================================
+	// Date Bucketing Functions
+	// ============================================================================
 
-	private fmtDate(d: Date): string {
-		const y = d.getFullYear();
-		const m = String(d.getMonth() + 1).padStart(2, "0");
-		const day = String(d.getDate()).padStart(2, "0");
-		return `${y}-${m}-${day}`;
+	/**
+	 * Formats a date as YYYY-MM-DD string
+	 */
+	private fmtDate(date: Date): string {
+		const year = date.getFullYear();
+		const month = String(date.getMonth() + 1).padStart(2, "0");
+		const day = String(date.getDate()).padStart(2, "0");
+		return `${year}-${month}-${day}`;
 	}
 
-	private startOfWeek(d: Date): Date {
-		const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-		const day = (x.getDay() + 6) % 7; // segunda como início
-		x.setDate(x.getDate() - day);
-		x.setHours(0, 0, 0, 0);
-		return x;
+	/**
+	 * Gets the start of the week (Monday as first day)
+	 */
+	private startOfWeek(date: Date): Date {
+		const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+		const dayOfWeek = (result.getDay() + 6) % 7; // Monday as start (0 = Monday)
+		result.setDate(result.getDate() - dayOfWeek);
+		result.setHours(0, 0, 0, 0);
+		return result;
 	}
 
 	private bucketX(rawX: string, mode: XBucket): string {
@@ -335,8 +382,19 @@ export class ChartNotesBasesView extends BasesView {
 		}
 	}
 
-	// ---------- X multi-valor (usado para Pie / tags) ----------
+	// ============================================================================
+	// Multi-Value X Handling (used for Pie / tags)
+	// ============================================================================
 
+	/**
+	 * Extracts X values from an entry, handling multi-value cases (tags, lists, etc.)
+	 * 
+	 * @param entry - Base entry to extract values from
+	 * @param xProp - X property configuration
+	 * @param xBucket - Date bucketing mode
+	 * @param multi - Whether to explode multi-values (true for pie charts)
+	 * @returns Array of X values (may be multiple for tags/lists)
+	 */
 	private getXValuesForEntry(
 		entry: any,
 		xProp: SelectedProp,
@@ -345,9 +403,9 @@ export class ChartNotesBasesView extends BasesView {
 	): string[] {
 		const values: string[] = [];
 
-		const applyBucket = (s: string) => this.bucketX(s, xBucket);
+		const applyBucket = (value: string) => this.bucketX(value, xBucket);
 
-		// Se não houver property de X definida, usa nome/path do arquivo.
+		// If no X property defined, use file name/path
 		if (!xProp.id) {
 			const file = entry.file;
 			const raw = file?.name
@@ -357,14 +415,14 @@ export class ChartNotesBasesView extends BasesView {
 			return values;
 		}
 
-		// Caso simples: não queremos multiplicar X (barras/linhas/etc.)
+		// Simple case: don't explode multi-values (bars/lines/etc.)
 		if (!multi) {
-			const v = this.readValue(entry, xProp) ?? MISSING_LABEL;
-			values.push(applyBucket(v));
+			const value = this.readValue(entry, xProp) ?? MISSING_LABEL;
+			values.push(applyBucket(value));
 			return values;
 		}
 
-		// multi = true → tentar explodir multi-valor (tags, listas, etc.)
+		// multi = true → try to explode multi-value (tags, lists, etc.)
 		let raw: any = null;
 		try {
 			raw = entry.getValue(xProp.id);
@@ -382,7 +440,7 @@ export class ChartNotesBasesView extends BasesView {
 		if (raw == null) {
 			pushStr(MISSING_LABEL);
 		} else if (typeof raw === "string") {
-			// Heurística para tags/strings multi: "#tag1 #tag2 ..."
+			// Heuristic for multi-tag/string values: "#tag1 #tag2 ..."
 			const trimmed = raw.trim();
 			if (trimmed) {
 				const parts = trimmed.split(/\s+/);
@@ -440,7 +498,9 @@ export class ChartNotesBasesView extends BasesView {
 		return values;
 	}
 
-	// ---------- builders ----------
+	// ============================================================================
+	// Row Builders
+	// ============================================================================
 
 	private buildRowsForAggregatedCharts(
 		groups: any[],
@@ -533,36 +593,44 @@ export class ChartNotesBasesView extends BasesView {
 		return rows;
 	}
 
+	/**
+	 * Applies cumulative sum transformation to rows, grouped by series.
+	 * 
+	 * @param rows - Rows to transform
+	 * @returns Rows with cumulative Y values, globally sorted by X
+	 */
 	private toCumulative(rows: QueryResultRow[]): QueryResultRow[] {
 		const bySeries = new Map<string, QueryResultRow[]>();
 
-		for (const r of rows) {
-			const key = r.series ?? "__no_series__";
+		// Group rows by series
+		for (const row of rows) {
+			const key = row.series ?? NO_SERIES_KEY;
 			let list = bySeries.get(key);
 			if (!list) {
 				list = [];
 				bySeries.set(key, list);
 			}
-			list.push(r);
+			list.push(row);
 		}
 
 		const result: QueryResultRow[] = [];
 
+		// Apply cumulative sum per series
 		for (const [, list] of bySeries) {
 			const sorted = [...list].sort((a, b) => this.compareX(a.x, b.x));
-			let acc = 0;
-			for (const r of sorted) {
-				const yNum = Number(r.y ?? 0);
-				if (Number.isNaN(yNum)) continue;
-				acc += yNum;
+			let accumulator = 0;
+			for (const row of sorted) {
+				const yValue = Number(row.y ?? 0);
+				if (Number.isNaN(yValue)) continue;
+				accumulator += yValue;
 				result.push({
-					...r,
-					y: acc,
+					...row,
+					y: accumulator,
 				});
 			}
 		}
 
-		// Reordenar globalmente por X para garantir ordem consistente
+		// Re-sort globally by X to ensure consistent order
 		result.sort((a, b) => this.compareX(a.x, b.x));
 
 		return result;
@@ -604,7 +672,14 @@ export class ChartNotesBasesView extends BasesView {
 		return rows;
 	}
 
-	// ---------- Gantt ----------
+	// ============================================================================
+	// Gantt Chart Row Builder
+	// ============================================================================
+
+	/**
+	 * Builds rows for Gantt chart from grouped Base entries.
+	 * Handles date logic: start/end/due/duration combinations.
+	 */
 	private buildRowsForGantt(
 		groups: any[],
 		labelPropFromCall: SelectedProp,
@@ -613,30 +688,34 @@ export class ChartNotesBasesView extends BasesView {
 		endProp: SelectedProp,
 		dueProp: SelectedProp,
 		durationProp: SelectedProp,
-		groupProp: SelectedProp, // compat com views antigas
+		groupProp: SelectedProp, // Compatibility with old views
 	): QueryResultRow[] {
 		const rows: QueryResultRow[] = [];
 
-		const DEFAULT_BLOCK_MINUTES = 60;
-		const DEFAULT_BLOCK_MS = DEFAULT_BLOCK_MINUTES * 60_000;
+		const DEFAULT_BLOCK_MS = DEFAULT_BLOCK_MINUTES * MILLISECONDS_PER_MINUTE;
 
-		const groupNameOf = (g: any): string => {
-			const cands = [
-				g?.label,
-				g?.name,
-				g?.value,
-				g?.key,
-				g?.group,
-				g?.groupLabel,
+		/**
+		 * Extracts group name from various possible properties
+		 */
+		const groupNameOf = (group: any): string => {
+			const candidates = [
+				group?.label,
+				group?.name,
+				group?.value,
+				group?.key,
+				group?.group,
+				group?.groupLabel,
 			];
-			for (const c of cands) {
-				if (c != null && String(c).trim() !== "") return String(c);
+			for (const candidate of candidates) {
+				if (candidate != null && String(candidate).trim() !== "") {
+					return String(candidate);
+				}
 			}
-			// sem agrupamento no Bases
+			// No grouping in Bases
 			return "";
 		};
 
-		// Task label configurada na view (ganttLabelProperty) tem prioridade
+		// Task label configured in view (ganttLabelProperty) has priority
 		let labelProp: SelectedProp = labelPropFromCall;
 		try {
 			const ganttLabel = this.getPropFromConfig("ganttLabelProperty");
@@ -644,13 +723,13 @@ export class ChartNotesBasesView extends BasesView {
 				labelProp = ganttLabel;
 			}
 		} catch {
-			// ignora e segue com labelPropFromCall
+			// Ignore and continue with labelPropFromCall
 		}
 
 		const hasManualGroupProp = !!groupProp.id;
 
 		for (const group of groups) {
-			const groupName = groupNameOf(group); // "" quando Bases não agrupa
+			const groupName = groupNameOf(group); // "" when Bases doesn't group
 
 			for (const entry of (group.entries ?? []) as any[]) {
 				const file = entry.file;
@@ -660,9 +739,12 @@ export class ChartNotesBasesView extends BasesView {
 				const dueStr = this.readValue(entry, dueProp);
 				const durationStr = this.readValue(entry, durationProp);
 
-				const durationMin = durationStr != null ? Number(durationStr) : NaN;
-				const hasDuration = Number.isFinite(durationMin) && durationMin > 0;
-				const durMs = hasDuration ? durationMin * 60_000 : DEFAULT_BLOCK_MS;
+				const durationMinutes = durationStr != null ? Number(durationStr) : NaN;
+				const hasDuration =
+					Number.isFinite(durationMinutes) && durationMinutes > 0;
+				const durationMs = hasDuration
+					? durationMinutes * MILLISECONDS_PER_MINUTE
+					: DEFAULT_BLOCK_MS;
 
 				const explicitStart = this.parseDate(startStr);
 				const explicitEnd = this.parseDate(endStr);
@@ -671,41 +753,42 @@ export class ChartNotesBasesView extends BasesView {
 				let start = explicitStart;
 				let end = explicitEnd;
 
-				// 1) Se já tem start + end, beleza.
+				// Date logic: try to build a valid start/end interval
+				// 1) If both start and end exist, use them as-is
 
-				// 2) Só start → usa duração pra frente (ou bloco padrão).
+				// 2) Only start → use duration forward (or default block)
 				if (start && !end) {
-					end = new Date(start.getTime() + durMs);
+					end = new Date(start.getTime() + durationMs);
 				}
 
-				// 3) Só end → usa duração pra trás (ou bloco padrão).
+				// 3) Only end → use duration backward (or default block)
 				if (!start && end) {
-					start = new Date(end.getTime() - durMs);
+					start = new Date(end.getTime() - durationMs);
 				}
 
-				// 4) Não tem start nem end, mas tem due.
+				// 4) No start or end, but has due date
 				if (!start && !end && due) {
 					if (hasDuration) {
 						end = due;
-						start = new Date(due.getTime() - durMs);
+						start = new Date(due.getTime() - durationMs);
 					} else {
-						// Sem duração → bloco curto ao redor do due.
+						// No duration → short block around due date
 						start = due;
 						end = new Date(due.getTime() + DEFAULT_BLOCK_MS);
 					}
 				}
 
-				// Ainda não deu pra montar intervalo? Ignora essa nota no gantt.
+				// Still couldn't build interval? Skip this note in Gantt
 				if (!start || !end) continue;
 
-				// garante start <= end
+				// Ensure start <= end
 				if (start.getTime() > end.getTime()) {
-					const tmp = start;
+					const temp = start;
 					start = end;
-					end = tmp;
+					end = temp;
 				}
 
-				// -------- label ----------
+				// Label
 				let label = this.readValue(entry, labelProp);
 
 				if (label == null || String(label).trim() === "") {
@@ -714,26 +797,26 @@ export class ChartNotesBasesView extends BasesView {
 					} else if (file?.path) {
 						label = String(file.path);
 					} else {
-						label = "(sem título)";
+						label = "(no title)";
 					}
 				}
 
-				// série (cores / legenda)
-				const seriesVal = this.readValue(entry, seriesProp);
-				const series = seriesVal != null ? String(seriesVal) : undefined;
+				// Series (colors / legend)
+				const seriesValue = this.readValue(entry, seriesProp);
+				const series = seriesValue != null ? String(seriesValue) : undefined;
 
 				const props: Record<string, any> = {};
 
-				// Agrupamento vindo do Bases
+				// Grouping from Bases
 				if (groupName) {
 					props["__basesGroup"] = groupName;
 				}
 
-				// Compatibilidade com Group property antigo (se ainda estiver configurado)
+				// Compatibility with old Group property (if still configured)
 				if (hasManualGroupProp) {
-					const gVal = this.readValue(entry, groupProp);
-					if (gVal != null && groupProp.name) {
-						props[groupProp.name] = gVal;
+					const groupValue = this.readValue(entry, groupProp);
+					if (groupValue != null && groupProp.name) {
+						props[groupProp.name] = groupValue;
 					}
 				}
 
@@ -744,13 +827,13 @@ export class ChartNotesBasesView extends BasesView {
 				if (endProp.name && endStr != null) props[endProp.name] = endStr;
 				if (dueProp.name && dueStr != null) props[dueProp.name] = dueStr;
 				if (hasDuration && durationProp.name)
-					props[durationProp.name] = durationMin;
+					props[durationProp.name] = durationMinutes;
 
 				const notePath = file?.path;
 
 				rows.push({
 					x: label,
-					y: 0, // Gantt não usa Y, mas o tipo exige
+					y: 0, // Gantt doesn't use Y, but type requires it
 					series,
 					start,
 					end,
@@ -761,7 +844,7 @@ export class ChartNotesBasesView extends BasesView {
 			}
 		}
 
-		// ordena por início (fica mais previsível)
+		// Sort by start date (makes it more predictable)
 		rows.sort((a, b) => {
 			if (!a.start || !b.start) return 0;
 			return a.start.getTime() - b.start.getTime();
@@ -784,9 +867,9 @@ export class ChartNotesBasesView extends BasesView {
 		xBucket: XBucket;
 		chartType: AllowedChartType;
 	}): any {
-		// IMPORTANTE: x/y aqui são nomes de propriedades,
-		// não rótulos bonitinhos. O renderer usa isso pra procurar
-		// os campos nos dados. O label humano fica por conta dele.
+		// IMPORTANT: x/y here are property names,
+		// not pretty labels. The renderer uses these to look up
+		// fields in the data. Human-readable labels are handled by the renderer.
 		const xKey = fields.x.name ?? "x";
 		const yKey = fields.y.name ?? "y";
 		const labelKey =
@@ -794,8 +877,8 @@ export class ChartNotesBasesView extends BasesView {
 
 		const groupKeyName =
 			fields.chartType === "gantt"
-				? "__basesGroup" // usar o agrupamento nativo do Bases
-				: (fields.group.name ?? "group");
+				? "__basesGroup" // Use native Bases grouping
+				: fields.group.name ?? "group";
 
 		return {
 			x: xKey,
