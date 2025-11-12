@@ -124,9 +124,9 @@ describe("Aggregation Functions", () => {
 	describe("sum aggregation", () => {
 		it("should sum values correctly", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, notes: ["note1"] },
-				{ x: "A", y: 20, notes: ["note2"] },
-				{ x: "B", y: 5, notes: ["note3"] },
+				{ x: "A", y: 10, notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 20, notes: ["note2"], _isDate: false, _origX: "A" },
+				{ x: "B", y: 5, notes: ["note3"], _isDate: false, _origX: "B" },
 			];
 
 			const result = applyAggregation(rows, "sum");
@@ -138,9 +138,9 @@ describe("Aggregation Functions", () => {
 
 		it("should sum values by series", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, series: "S1", notes: ["note1"] },
-				{ x: "A", y: 20, series: "S1", notes: ["note2"] },
-				{ x: "A", y: 5, series: "S2", notes: ["note3"] },
+				{ x: "A", y: 10, series: "S1", notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 20, series: "S1", notes: ["note2"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 5, series: "S2", notes: ["note3"], _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, "sum");
@@ -152,23 +152,23 @@ describe("Aggregation Functions", () => {
 
 		it("should handle zero and negative values", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, notes: ["note1"] },
-				{ x: "A", y: -5, notes: ["note2"] },
-				{ x: "A", y: 0, notes: ["note3"] },
+				{ x: "A", y: 10, notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: -5, notes: ["note2"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 0, notes: ["note3"], _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, "sum");
 
 			expect(result[0].y).toBe(5); // 10 - 5 + 0
-		});
 	});
+});
 
 	describe("avg aggregation", () => {
-		it("should calculate average correctly", () => {
+	it("should calculate average correctly", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, notes: ["note1"] },
-				{ x: "A", y: 20, notes: ["note2"] },
-				{ x: "A", y: 30, notes: ["note3"] },
+				{ x: "A", y: 10, notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 20, notes: ["note2"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 30, notes: ["note3"], _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, "avg");
@@ -178,24 +178,24 @@ describe("Aggregation Functions", () => {
 
 		it("should calculate average by series", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, series: "S1", notes: ["note1"] },
-				{ x: "A", y: 20, series: "S1", notes: ["note2"] },
-				{ x: "A", y: 5, series: "S2", notes: ["note3"] },
+				{ x: "A", y: 10, series: "S1", notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 20, series: "S1", notes: ["note2"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 5, series: "S2", notes: ["note3"], _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, "avg");
 
 			expect(result.find((r) => r.series === "S1")?.y).toBe(15); // (10 + 20) / 2
 			expect(result.find((r) => r.series === "S2")?.y).toBe(5); // 5 / 1
-		});
 	});
+});
 
 	describe("min aggregation", () => {
-		it("should find minimum value", () => {
+	it("should find minimum value", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, notes: ["note1"] },
-				{ x: "A", y: 5, notes: ["note2"] },
-				{ x: "A", y: 20, notes: ["note3"] },
+				{ x: "A", y: 10, notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 5, notes: ["note2"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 20, notes: ["note3"], _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, "min");
@@ -205,38 +205,38 @@ describe("Aggregation Functions", () => {
 
 		it("should handle negative values", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, notes: ["note1"] },
-				{ x: "A", y: -5, notes: ["note2"] },
-				{ x: "A", y: 0, notes: ["note3"] },
+				{ x: "A", y: 10, notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: -5, notes: ["note2"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 0, notes: ["note3"], _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, "min");
 
 			expect(result[0].y).toBe(-5);
-		});
 	});
+});
 
 	describe("max aggregation", () => {
-		it("should find maximum value", () => {
+	it("should find maximum value", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, notes: ["note1"] },
-				{ x: "A", y: 5, notes: ["note2"] },
-				{ x: "A", y: 20, notes: ["note3"] },
+				{ x: "A", y: 10, notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 5, notes: ["note2"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 20, notes: ["note3"], _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, "max");
 
 			expect(result[0].y).toBe(20);
-		});
 	});
+});
 
 	describe("count aggregation", () => {
 		it("should count the number of notes", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 1, notes: ["note1"] },
-				{ x: "A", y: 1, notes: ["note2"] },
-				{ x: "A", y: 1, notes: ["note3"] },
-				{ x: "B", y: 1, notes: ["note4"] },
+				{ x: "A", y: 1, notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 1, notes: ["note2"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 1, notes: ["note3"], _isDate: false, _origX: "A" },
+				{ x: "B", y: 1, notes: ["note4"], _isDate: false, _origX: "B" },
 			];
 
 			const result = applyAggregation(rows, "count");
@@ -248,9 +248,9 @@ describe("Aggregation Functions", () => {
 
 		it("should count by series", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 1, series: "S1", notes: ["note1"] },
-				{ x: "A", y: 1, series: "S1", notes: ["note2"] },
-				{ x: "A", y: 1, series: "S2", notes: ["note3"] },
+				{ x: "A", y: 1, series: "S1", notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 1, series: "S1", notes: ["note2"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 1, series: "S2", notes: ["note3"], _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, "count");
@@ -263,8 +263,8 @@ describe("Aggregation Functions", () => {
 	describe("no aggregation", () => {
 		it("should return rows without aggregation when mode is null", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, notes: ["note1"] },
-				{ x: "A", y: 20, notes: ["note2"] },
+				{ x: "A", y: 10, notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 20, notes: ["note2"], _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, null);
@@ -272,14 +272,14 @@ describe("Aggregation Functions", () => {
 			expect(result).toHaveLength(2);
 			expect(result[0].y).toBe(10);
 			expect(result[1].y).toBe(20);
-		});
 	});
+});
 
 	describe("aggregation metadata", () => {
 		it("should combine notes from multiple rows", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, notes: ["note1"] },
-				{ x: "A", y: 20, notes: ["note2"] },
+				{ x: "A", y: 10, notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 20, notes: ["note2"], _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, "sum");
@@ -289,8 +289,8 @@ describe("Aggregation Functions", () => {
 
 		it("should preserve properties from the first row", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, notes: ["note1"], props: { priority: "high" } },
-				{ x: "A", y: 20, notes: ["note2"], props: { priority: "low" } },
+				{ x: "A", y: 10, notes: ["note1"], props: { priority: "high" }, _isDate: false, _origX: "A" },
+				{ x: "A", y: 20, notes: ["note2"], props: { priority: "low" }, _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, "sum");
@@ -300,8 +300,8 @@ describe("Aggregation Functions", () => {
 
 		it("should preserve series information", () => {
 			const rows: RawQueryRow[] = [
-				{ x: "A", y: 10, series: "S1", notes: ["note1"] },
-				{ x: "A", y: 20, series: "S1", notes: ["note2"] },
+				{ x: "A", y: 10, series: "S1", notes: ["note1"], _isDate: false, _origX: "A" },
+				{ x: "A", y: 20, series: "S1", notes: ["note2"], _isDate: false, _origX: "A" },
 			];
 
 			const result = applyAggregation(rows, "sum");

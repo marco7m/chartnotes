@@ -60,8 +60,8 @@ function parseRollingWindow(rolling: any): number {
 
 describe("compareXAsc", () => {
 	it("should compare dates correctly", () => {
-		const a: QueryResultRow = { x: new Date("2024-01-15"), y: 10 };
-		const b: QueryResultRow = { x: new Date("2024-01-20"), y: 20 };
+		const a: QueryResultRow = { x: new Date("2024-01-15"), y: 10, notes: [] };
+		const b: QueryResultRow = { x: new Date("2024-01-20"), y: 20, notes: [] };
 		
 		expect(compareXAsc(a, b)).toBeLessThan(0);
 		expect(compareXAsc(b, a)).toBeGreaterThan(0);
@@ -69,16 +69,16 @@ describe("compareXAsc", () => {
 	});
 
 	it("should compare strings alphabetically", () => {
-		const a: QueryResultRow = { x: "apple", y: 10 };
-		const b: QueryResultRow = { x: "banana", y: 20 };
+		const a: QueryResultRow = { x: "apple", y: 10, notes: [] };
+		const b: QueryResultRow = { x: "banana", y: 20, notes: [] };
 		
 		expect(compareXAsc(a, b)).toBeLessThan(0);
 		expect(compareXAsc(b, a)).toBeGreaterThan(0);
 	});
 
 	it("should compare numbers as strings", () => {
-		const a: QueryResultRow = { x: "10", y: 10 };
-		const b: QueryResultRow = { x: "20", y: 20 };
+		const a: QueryResultRow = { x: "10", y: 10, notes: [] };
+		const b: QueryResultRow = { x: "20", y: 20, notes: [] };
 		
 		expect(compareXAsc(a, b)).toBeLessThan(0);
 	});
@@ -86,23 +86,23 @@ describe("compareXAsc", () => {
 
 describe("compareXSeriesAsc", () => {
 	it("should compare first by X, then by series", () => {
-		const a: QueryResultRow = { x: "2024-01-15", y: 10, series: "A" };
-		const b: QueryResultRow = { x: "2024-01-15", y: 20, series: "B" };
+		const a: QueryResultRow = { x: "2024-01-15", y: 10, series: "A", notes: [] };
+		const b: QueryResultRow = { x: "2024-01-15", y: 20, series: "B", notes: [] };
 		
 		expect(compareXSeriesAsc(a, b)).toBeLessThan(0);
 		expect(compareXSeriesAsc(b, a)).toBeGreaterThan(0);
 	});
 
 	it("should use X when series are equal", () => {
-		const a: QueryResultRow = { x: new Date("2024-01-15"), y: 10, series: "A" };
-		const b: QueryResultRow = { x: new Date("2024-01-20"), y: 20, series: "A" };
+		const a: QueryResultRow = { x: new Date("2024-01-15"), y: 10, series: "A", notes: [] };
+		const b: QueryResultRow = { x: new Date("2024-01-20"), y: 20, series: "A", notes: [] };
 		
 		expect(compareXSeriesAsc(a, b)).toBeLessThan(0);
 	});
 
 	it("should treat empty series as empty string", () => {
-		const a: QueryResultRow = { x: "2024-01-15", y: 10 };
-		const b: QueryResultRow = { x: "2024-01-15", y: 20, series: "A" };
+		const a: QueryResultRow = { x: "2024-01-15", y: 10, notes: [] };
+		const b: QueryResultRow = { x: "2024-01-15", y: 20, series: "A", notes: [] };
 		
 		expect(compareXSeriesAsc(a, b)).toBeLessThan(0); // "" < "A"
 	});
@@ -111,9 +111,9 @@ describe("compareXSeriesAsc", () => {
 describe("applyCumulativeInOrder", () => {
 	it("should calculate cumulative sum correctly", () => {
 		const rows: QueryResultRow[] = [
-			{ x: "2024-01-01", y: 10 },
-			{ x: "2024-01-02", y: 20 },
-			{ x: "2024-01-03", y: 30 },
+			{ x: "2024-01-01", y: 10, notes: [] },
+			{ x: "2024-01-02", y: 20, notes: [] },
+			{ x: "2024-01-03", y: 30, notes: [] },
 		];
 
 		const result = applyCumulativeInOrder(rows);
@@ -125,41 +125,41 @@ describe("applyCumulativeInOrder", () => {
 
 	it("should calculate cumulative sum per series separately", () => {
 		const rows: QueryResultRow[] = [
-			{ x: "2024-01-01", y: 10, series: "A" },
-			{ x: "2024-01-01", y: 5, series: "B" },
-			{ x: "2024-01-02", y: 20, series: "A" },
-			{ x: "2024-01-02", y: 15, series: "B" },
+			{ x: "2024-01-01", y: 10, series: "A", notes: [] },
+			{ x: "2024-01-01", y: 5, series: "B", notes: [] },
+			{ x: "2024-01-02", y: 20, series: "A", notes: [] },
+			{ x: "2024-01-02", y: 15, series: "B", notes: [] },
 		];
 
 		const result = applyCumulativeInOrder(rows);
 
-		// Série A
+		// Series A
 		expect(result[0].y).toBe(10);
 		expect(result[2].y).toBe(30); // 10 + 20
 
-		// Série B
+		// Series B
 		expect(result[1].y).toBe(5);
 		expect(result[3].y).toBe(20); // 5 + 15
 	});
 
 	it("should maintain monotonicity (never decreases)", () => {
 		const rows: QueryResultRow[] = [
-			{ x: "2024-01-01", y: 10 },
-			{ x: "2024-01-02", y: 5 }, // valor menor
-			{ x: "2024-01-03", y: 20 },
+			{ x: "2024-01-01", y: 10, notes: [] },
+			{ x: "2024-01-02", y: 5, notes: [] }, // smaller value
+			{ x: "2024-01-03", y: 20, notes: [] },
 		];
 
 		const result = applyCumulativeInOrder(rows);
 
 		expect(result[0].y).toBe(10);
-		expect(result[1].y).toBe(15); // 10 + 5 (ainda aumenta)
+		expect(result[1].y).toBe(15); // 10 + 5 (still increases)
 		expect(result[2].y).toBe(35); // 15 + 20
 	});
 
 	it("should treat empty series as __no_series__", () => {
 		const rows: QueryResultRow[] = [
-			{ x: "2024-01-01", y: 10 },
-			{ x: "2024-01-02", y: 20 },
+			{ x: "2024-01-01", y: 10, notes: [] },
+			{ x: "2024-01-02", y: 20, notes: [] },
 		];
 
 		const result = applyCumulativeInOrder(rows);
