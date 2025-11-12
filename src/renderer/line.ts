@@ -448,6 +448,30 @@ export function renderStackedArea(
 		return;
 	}
 
+	// --- Agrupar por série ---
+	const seriesMap = new Map<string, AnyRow[]>();
+
+	for (const r of rows) {
+		const key =
+			r.series != null && r.series !== ""
+				? String(r.series)
+				: "__default__";
+		const arr = seriesMap.get(key) ?? [];
+		arr.push(r);
+		seriesMap.set(key, arr);
+	}
+
+	const seriesKeys = Array.from(seriesMap.keys()).filter(
+		(k) => k !== "__default__"
+	);
+
+	// Se não há séries múltiplas, cai para área normal
+	if (seriesKeys.length === 0) {
+		renderLine(container, spec, data, true);
+		return;
+	}
+
+	// Só criar container se realmente vamos renderizar stacked area
 	const { inner, svg, tooltip, details } = ensureContainer(
 		container,
 		background
@@ -476,29 +500,6 @@ export function renderStackedArea(
 	const isDateAxis =
 		parsedDates.length >= 2 &&
 		parsedDates.length >= rows.length * 0.6;
-
-	// --- Agrupar por série ---
-	const seriesMap = new Map<string, AnyRow[]>();
-
-	for (const r of rows) {
-		const key =
-			r.series != null && r.series !== ""
-				? String(r.series)
-				: "__default__";
-		const arr = seriesMap.get(key) ?? [];
-		arr.push(r);
-		seriesMap.set(key, arr);
-	}
-
-	const seriesKeys = Array.from(seriesMap.keys()).filter(
-		(k) => k !== "__default__"
-	);
-
-	// Se não há séries múltiplas, cai para área normal
-	if (seriesKeys.length === 0) {
-		renderLine(container, spec, data, true);
-		return;
-	}
 
 	// --- Escala X (data vs categórico) ---
 	let xScale: (x: any) => number;
@@ -784,16 +785,19 @@ export function renderStackedArea(
 	}
 
 	// --- Legenda ---
-	const legend = container.createDiv({ cls: "chart-notes-legend" });
-	seriesKeys.forEach((key, idx) => {
-		const item = legend.createDiv({ cls: "chart-notes-legend-item" });
-		const swatch = item.createDiv();
-		swatch.style.width = "10px";
-		swatch.style.height = "10px";
-		swatch.style.borderRadius = "999px";
-		swatch.style.backgroundColor = colorFor(key, idx);
-		item.createSpan({ text: key });
-	});
+	// Só criar legenda se houver séries
+	if (seriesKeys.length > 0) {
+		const legend = container.createDiv({ cls: "chart-notes-legend" });
+		seriesKeys.forEach((key, idx) => {
+			const item = legend.createDiv({ cls: "chart-notes-legend-item" });
+			const swatch = item.createDiv();
+			swatch.style.width = "10px";
+			swatch.style.height = "10px";
+			swatch.style.borderRadius = "999px";
+			swatch.style.backgroundColor = colorFor(key, idx);
+			item.createSpan({ text: key });
+		});
+	}
 
 	// --- Desenhar áreas empilhadas ---
 	seriesKeys.forEach((sKey, sIndex) => {
