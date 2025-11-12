@@ -1,338 +1,425 @@
 # Chart Notes
 
-Visual charts for your notes **inside Obsidian Bases**.
+> Transform your Obsidian notes into beautiful, interactive charts directly inside Bases.
 
-Chart Notes adds a new **“Chart Notes” layout** to Bases so you can turn any Base
-into bar, line, pie, scatter or Gantt charts – using your existing properties
-(frontmatter or inline).
+Chart Notes is a powerful Obsidian plugin that adds a **Chart Notes layout** to Bases, allowing you to visualize your note properties as bar charts, line graphs, pie charts, scatter plots, and Gantt timelines. No custom query language needed—it works seamlessly with your existing Bases filters, sorts, and groups.
 
----
-
-## Features
-
-- Works as a **layout inside Bases** – no custom query language, you keep
-  using Bases filters, sorts and groups.
-- Multiple chart types:
-  - **Bar** and **Stacked bar**
-  - **Line** and **Stacked area**
-  - **Pie**
-  - **Scatter**
-  - **Gantt** timeline
-- Uses **note properties** as:
-  - X axis / category
-  - Y numeric value (or automatic count)
-  - Series / color (status, project, priority…)
-- **Date-aware X axis** on line/stacked-area charts:
-  spacing is proportional to time and can be bucketed by day/week/month/etc.
-- **Drilldown**: clicking a bar/point/slice opens a list of notes.
-- **Interactive Gantt**:
-  - Start / End / Due / Duration taken from properties
-  - “Today” vertical line
-  - Due markers on each bar
-  - Tooltip with dates, estimate and key fields
-  - Click a bar or label to edit dates & estimate in a small modal.
-- Everything respects whatever **filters, sorts and groupings**
-  you configured in the Base.
+![Obsidian](https://img.shields.io/badge/Obsidian-1.10%2B-7C3AED?logo=obsidian)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
-## Requirements
+## ✨ Features
 
-- Obsidian **1.10+**
-- **Bases** feature enabled (currently requires Insider / Catalyst or any
-  Obsidian version that ships Bases)
-- This plugin is not yet in the community listing, so installation is manual /
-  via BRAT.
+### 📊 Multiple Chart Types
+- **Bar Charts** – Grouped and stacked bars for categorical data
+- **Line Charts** – Time series with date-aware X-axis
+- **Stacked Area Charts** – Cumulative data visualization over time
+- **Pie Charts** – Distribution and proportion visualization
+- **Scatter Plots** – Compare two numeric properties
+- **Gantt Timelines** – Interactive project management with task scheduling
 
----
+### 🎯 Key Capabilities
+- **Seamless Bases Integration** – Works with all Bases features (filters, sorts, groups)
+- **Property-Based** – Uses your existing frontmatter and inline properties
+- **Date-Aware** – Intelligent date handling with automatic bucketing (day/week/month/year)
+- **Interactive** – Click any element to drill down into underlying notes
+- **Cumulative Sum** – Running totals for time series data
+- **Real-Time Updates** – Charts refresh automatically as you modify notes or filters
 
-## Installation
-
-### Via BRAT (recommended for now)
-
-1. Install the **BRAT** plugin in Obsidian.
-2. In BRAT, add this repo as a beta plugin:
-
-```
-https://github.com/marco7m/chartnotes
-````
-
-3. Let BRAT install/update it.
-4. Enable **Chart Notes** in *Settings → Community plugins*.
-
-### Manual install from source
-
-1. Clone the repo into your vault’s plugins folder:
-
-```bash
-cd path/to/your/vault/.obsidian/plugins
-git clone https://github.com/marco7m/chartnotes.git
-cd chartnotes
-npm install
-npm run build
-````
-
-2. Restart Obsidian and enable **Chart Notes** in the plugin settings.
+### 🎨 Gantt Chart Features
+- Visual timeline with start/end dates
+- Due date markers
+- Duration estimates
+- Interactive editing (click to modify dates)
+- Group by project, status, or any property
+- "Today" indicator line
 
 ---
 
-## Quick start (Bases)
+## 📋 Requirements
 
-1. Open or create a **Base** with the notes you want to visualize.
-2. At the top right of the Base, click **+ New** and choose
-   **Layout → Chart Notes**.
-3. The view will appear with a **“Configure view”** panel on the left.
-4. Choose a **Chart type**.
-5. Fill the relevant options (X property, Y property, series, etc.).
-6. The chart updates automatically as you tweak the view or Base filters.
-
-All chart data always comes from the **current Base**:
-filters, search, group by, sorts… everything is reused.
+- **Obsidian** version 1.10.0 or higher
+- **Bases** feature enabled (available in Insider/Catalyst builds or Obsidian versions that include Bases)
+- This plugin is currently in beta and not yet in the community listing
 
 ---
 
-## Common options
+## 🚀 Installation
 
-These options appear (or are reused) across several chart types.
+### Option 1: Via BRAT (Recommended)
 
-* **Chart type**
-  `Bar`, `Stacked bar`, `Line`, `Stacked area`, `Pie`, `Scatter`, `Gantt`.
+1. Install the **[BRAT](https://github.com/TfTHacker/obsidian42-brat)** plugin in Obsidian
+2. Open **Settings → Community plugins → BRAT**
+3. Click **"Add Beta Plugin"** and paste:
+   ```
+   https://github.com/marco7m/chartnotes
+   ```
+4. BRAT will install the plugin automatically
+5. Enable **Chart Notes** in **Settings → Community plugins**
 
-* **X axis / category (bars & slices)**
-  Property used for the X axis or categories.
-  For pie charts it defines the slices.
-  For line/stacked-area charts it is usually a **date** property.
+### Option 2: Manual Installation
 
-* **Task label (Gantt)**
-  Label shown on the left in the Gantt timeline.
-  If empty, Chart Notes falls back to the note’s file name.
+1. Clone this repository into your vault's plugins folder:
+   ```bash
+   cd path/to/your/vault/.obsidian/plugins
+   git clone https://github.com/marco7m/chartnotes.git
+   cd chartnotes
+   ```
 
-* **Y value (empty = count)**
-  Numeric property used as the Y value.
-  If left empty, Chart Notes simply **counts notes** for each X / series.
+2. Install dependencies and build:
+   ```bash
+   npm install
+   npm run build
+   ```
 
-* **Series / color (optional)**
-  Property used to split data into different series and colors
-  (status, project, priority, assignee…).
-
-* **X bucket (dates)** – **line/stacked-area only**
-  How to group dates on the X axis:
-
-  * `auto`
-  * `none`
-  * `day`
-  * `week`
-  * `month`
-  * `quarter`
-  * `year`
-
-  When X is a date, the horizontal spacing is **proportional to time**; this
-  setting controls how values are grouped together before plotting.
-
-* **Value aggregation (Y)** – most charts
-  How multiple rows with the same X/series are combined:
-
-  * `Sum` – sum all Y values
-  * `Count (ignore Y)` – ignore Y and just count notes
-  * `Cumulative sum` – line/stacked-area only; turns the series into a running total.
-
-* **Drilldown (click opens notes)**
-  When enabled, clicking a point/bar/slice opens a side list of the notes
-  behind that data point.
-
-* **Title (optional)**
-  Custom title. If empty, the Bases view name is used.
+3. Restart Obsidian and enable **Chart Notes** in **Settings → Community plugins**
 
 ---
 
-## Chart types
+## 🎓 Quick Start
 
-### Bar & Stacked bar
+1. **Open or create a Base** with the notes you want to visualize
+2. Click **+ New** in the top right of the Base
+3. Select **Layout → Chart Notes**
+4. Configure your chart:
+   - Choose a **Chart type**
+   - Select **X axis / category** property
+   - Optionally set **Y value** property (or leave empty to count notes)
+   - Add **Series / color** for multi-series charts
+5. The chart updates automatically as you adjust settings or Base filters
 
-Use this for simple aggregations: how many notes per status, project, tag,
-month, etc.
+> 💡 **Tip**: All chart data comes from the current Base. Filters, search, grouping, and sorting are all respected automatically.
 
-Recommended configuration:
+---
 
-* **Chart type:** `Bar` or `Stacked bar`
-* **X axis / category:** your grouping field (`status`, `project`, `tag`…)
-* **Y value:** numeric property to sum (for example `timeEstimate`)
-  or leave empty to just count notes.
-* **Series / color:** optional property to split bars (for example `priority`).
+## 📖 Chart Types Guide
 
-`Bar` draws one bar per (X, series) pair.
-`Stacked bar` stacks series on top of each other.
+### Bar & Stacked Bar
+
+Perfect for aggregations and comparisons.
+
+**Use cases:**
+- Count notes by status, project, or tag
+- Sum numeric values (e.g., `timeEstimate`) by category
+- Compare values across different groups
+
+**Configuration:**
+- **Chart type:** `Bar` or `Stacked bar`
+- **X axis / category:** Your grouping field (`status`, `project`, `tag`, etc.)
+- **Y value:** Numeric property to sum (e.g., `timeEstimate`) or leave empty to count notes
+- **Series / color:** Optional property to split bars (e.g., `priority`, `assignee`)
+
+**Difference:**
+- `Bar` draws separate bars for each (X, series) combination
+- `Stacked bar` stacks series vertically, showing total and individual contributions
 
 ---
 
 ### Line & Stacked Area
 
-For metrics that evolve over time.
+Ideal for time series and trends.
 
-* **Chart type:** `Line` or `Stacked area`
-* **X axis / category:** a **date** property (created, scheduled, startDate…)
-* **Y value:** the numeric metric to plot (effort, value, count…)
-* **Series / color:** optional, to split the lines (required for stacked area).
+**Use cases:**
+- Track metrics over time (effort, value, completion rate)
+- Visualize cumulative progress
+- Monitor trends and patterns
 
-Chart Notes:
+**Configuration:**
+- **Chart type:** `Line` or `Stacked area`
+- **X axis / category:** A **date** property (`created`, `scheduled`, `startDate`, etc.)
+- **Y value:** The numeric metric to plot (`effort`, `value`, `count`, etc.)
+- **Series / color:** Optional for line charts, **required** for stacked area
+- **X bucket:** How to group dates (`auto`, `day`, `week`, `month`, `quarter`, `year`)
+- **Value aggregation:** 
+  - `Sum` – Sum values in each time bucket
+  - `Count (ignore Y)` – Count notes per bucket
+  - `Cumulative sum` – Running total over time (monotonic, never decreases)
 
-* Interprets X as dates and spaces points according to **real time distance**.
-* Buckets dates using the **X bucket** setting (day/week/month…).
-* Aggregates Y according to **Value aggregation (Y)**:
-
-  * `Sum`: sum values in each bucket
-  * `Count (ignore Y)`: just count notes
-  * `Cumulative sum`: running total over time (line/stacked-area only).
-
----
-
-### Pie
-
-For simple distributions: “how many notes each status has”, etc.
-
-* **Chart type:** `Pie`
-* **X axis / category:** property that defines each slice
-* **Y value:** ignored → always counts notes per category
-* **Series / color:** ignored
-
-Each slice’s size represents the **number of notes** with that X value.
+**Features:**
+- **Date-aware spacing** – Points are spaced proportionally to real time distance
+- **Automatic bucketing** – Group dates by day/week/month for cleaner visualization
+- **Cumulative sum** – Perfect for tracking running totals (e.g., total effort over time)
 
 ---
 
-### Scatter
+### Pie Chart
 
-When you want to compare two numeric properties.
+Great for distributions and proportions.
 
-* **Chart type:** `Scatter`
-* **X axis / category:** numeric property (for example `estimate`)
-* **Y value:** another numeric property (for example `actual`)
-* **Series / color:** optional – categories for coloring points.
+**Use cases:**
+- "How many notes have each status?"
+- "What's the distribution of projects?"
+- "Which tags are most common?"
 
----
+**Configuration:**
+- **Chart type:** `Pie`
+- **X axis / category:** Property that defines each slice (`status`, `project`, `tag`, etc.)
+- **Y value:** Ignored (always counts notes)
+- **Series / color:** Ignored
 
-## Gantt chart
-
-This is the most opinionated part of the plugin.
-
-### Where the data comes from
-
-Each row of the Base becomes a **task** in the Gantt chart.
-You tell Chart Notes which properties mean:
-
-* **Task label (Gantt)** – main label for the row
-* **Start (Gantt)** – start date/datetime
-* **End (Gantt)** – end date/datetime
-* **Due (deadline, optional)** – deadline date (drawn as a vertical marker)
-* **Duration in minutes (optional)** – numeric duration estimate
-* **Series / color (optional)** – used for bar color
-
-The **grouping/lanes** come from the **Base itself**:
-
-* Use Bases’ “Group by” to group your tasks by project, status, assignee, etc.
-* Chart Notes uses that group name for the left-hand lane headings.
-
-If the Base is **not grouped**, all tasks appear in a single lane.
-
-### How start/end are computed
-
-Chart Notes tries to make a reasonable bar even when some fields are missing.
-
-Given:
-
-* `start` = Start (Gantt) property
-* `end` = End (Gantt) property
-* `due` = Due property
-* `duration` = Duration in minutes (optional)
-* default block = 60 minutes
-
-The logic is:
-
-1. If **both start and end** exist → use them as is.
-2. If only **start + duration** → end = start + duration.
-3. If only **end + duration** → start = end − duration.
-4. If you only have **start** → create a short bar (start + default block).
-5. If you only have **end** → short bar ending at end.
-6. If you only have **due + duration** → bar ends at due, starts at due − duration.
-7. If you only have **due** → very short bar around due.
-
-Invalid or missing dates are skipped.
-
-### Interaction
-
-* **Tooltip**
-  Hovering a bar or label shows:
-
-  * Task title
-  * Start → End range
-  * `est: … min` (from Duration) or inferred duration
-  * `due: …` if available
-  * Extra fields such as `status` and `priority` (from properties).
-
-* **Today line**
-  A vertical dashed line marks “today”.
-
-* **Due marker**
-  If you configured a Due property, a small dashed line is drawn at the due
-  date inside each bar.
-
-* **Editing tasks**
-  Click a bar or its label to open a small modal that lets you edit:
-
-  * Start date
-  * End date
-  * Duration (minutes)
-  * Due date
-
-  The plugin writes these values back to the note’s **frontmatter** and
-  reindexes the note, so the chart refreshes.
+Each slice's size represents the **number of notes** with that category value.
 
 ---
 
-## Tips & recipes
+### Scatter Plot
 
-* For **task management**:
+Compare two numeric properties.
 
-  * Make a Base filtered to your open tasks.
-  * Group by project.
-  * Add a **Gantt** view using:
+**Use cases:**
+- Estimate vs. actual time
+- Value vs. effort
+- Any two numeric comparisons
 
-    * Task label: file name
-    * Start: `startDate`
-    * End: `scheduled`
-    * Due: `due`
-    * Duration in minutes: `timeEstimate`
-    * Series / color: `status`
-* For **workload charts**:
-
-  * Same Base, but use a **Stacked bar**:
-
-    * X axis: `status` or `project`
-    * Y value: `timeEstimate`
-    * Series / color: `file name` or `priority`.
+**Configuration:**
+- **Chart type:** `Scatter`
+- **X axis / category:** First numeric property (e.g., `estimate`)
+- **Y value:** Second numeric property (e.g., `actual`)
+- **Series / color:** Optional – categories for coloring points (e.g., `status`, `priority`)
 
 ---
 
-## Development
+### Gantt Chart
 
-Inside the repo:
+Interactive project timeline visualization.
 
+**Use cases:**
+- Project planning and scheduling
+- Task management with dates
+- Resource allocation over time
+
+**Configuration:**
+- **Chart type:** `Gantt`
+- **Task label:** Property for row labels (defaults to file name)
+- **Start (Gantt):** Start date/datetime property
+- **End (Gantt):** End date/datetime property
+- **Due (deadline, optional):** Deadline date property
+- **Duration in minutes (optional):** Numeric duration estimate
+- **Series / color:** Optional – used for bar color
+
+**Grouping:**
+- Use Bases' **"Group by"** feature to create lanes
+- Tasks are grouped by the selected property (project, status, assignee, etc.)
+- If not grouped, all tasks appear in a single lane
+
+**Smart Date Logic:**
+Chart Notes intelligently computes start/end dates even when some fields are missing:
+
+1. **Both start and end** → Use as-is
+2. **Start + duration** → End = start + duration
+3. **End + duration** → Start = end − duration
+4. **Only start** → Create short bar (start + 60 minutes)
+5. **Only end** → Short bar ending at end
+6. **Due + duration** → Bar ends at due, starts at due − duration
+7. **Only due** → Very short bar around due
+
+**Interactions:**
+- **Hover** – See tooltip with dates, duration, and key properties
+- **Click bar or label** – Edit start, end, duration, and due dates in a modal
+- **Today line** – Vertical dashed line marks current date
+- **Due markers** – Small dashed lines show deadlines within bars
+
+---
+
+## ⚙️ Common Options
+
+These options appear across multiple chart types:
+
+### Chart Type
+Choose from: `Bar`, `Stacked bar`, `Line`, `Stacked area`, `Pie`, `Scatter`, `Gantt`
+
+### X Axis / Category
+Property used for the X axis or categories. For pie charts, this defines the slices. For line/stacked-area charts, this is usually a **date** property.
+
+### Y Value (empty = count)
+Numeric property used as the Y value. If left empty, Chart Notes simply **counts notes** for each X/series combination.
+
+### Series / Color (optional)
+Property used to split data into different series and colors. Useful for:
+- Status (`open`, `in-progress`, `done`)
+- Project names
+- Priority levels
+- Assignees
+- Any categorical property
+
+### X Bucket (dates) – Line/Stacked Area Only
+How to group dates on the X axis:
+- `auto` – Automatically choose best bucket size
+- `none` – No bucketing, use raw dates
+- `day` – Group by day
+- `week` – Group by week
+- `month` – Group by month
+- `quarter` – Group by quarter
+- `year` – Group by year
+
+When X is a date, horizontal spacing is **proportional to time**. This setting controls how values are grouped before plotting.
+
+### Value Aggregation (Y)
+How multiple notes with the same X/series are combined:
+- `Sum` – Sum all Y values
+- `Count (ignore Y)` – Ignore Y and just count notes
+- `Cumulative sum` – Line/stacked-area only; running total over time (monotonic)
+
+### Drilldown (click opens notes)
+When enabled, clicking a point/bar/slice opens a side panel listing all notes behind that data point.
+
+### Title (optional)
+Custom chart title. If empty, the Bases view name is used.
+
+---
+
+## 💡 Use Cases & Examples
+
+### Task Management Dashboard
+
+**Setup:**
+1. Create a Base filtered to your open tasks
+2. Group by `project`
+3. Add a **Gantt** view:
+   - Task label: `file.name`
+   - Start: `startDate`
+   - End: `scheduled`
+   - Due: `due`
+   - Duration: `timeEstimate` (in minutes)
+   - Series: `status`
+
+**Result:** Visual timeline of all tasks with deadlines and estimates.
+
+---
+
+### Workload Analysis
+
+**Setup:**
+1. Same Base as above
+2. Add a **Stacked bar** view:
+   - X axis: `status` or `project`
+   - Y value: `timeEstimate`
+   - Series: `priority` or `assignee`
+
+**Result:** See total effort broken down by category and series.
+
+---
+
+### Progress Tracking
+
+**Setup:**
+1. Base with tasks that have `completed` dates
+2. Add a **Stacked area** view:
+   - Chart type: `Stacked area`
+   - X axis: `completed` (date)
+   - Y value: `timeEstimate`
+   - Series: `project`
+   - Value aggregation: `Cumulative sum`
+
+**Result:** Running total of completed work over time, stacked by project.
+
+---
+
+### Status Distribution
+
+**Setup:**
+1. Any Base with a `status` property
+2. Add a **Pie** view:
+   - X axis: `status`
+
+**Result:** Visual breakdown of how many notes are in each status.
+
+---
+
+## 🛠️ Development
+
+### Prerequisites
+- Node.js 18+ (LTS recommended)
+- npm
+
+### Setup
 ```bash
+# Clone the repository
+git clone https://github.com/marco7m/chartnotes.git
+cd chartnotes
+
+# Install dependencies
 npm install
 
-# Build once
+# Build the plugin
 npm run build
 ```
 
-The compiled plugin lives in the repo itself; Obsidian loads it from the
-`manifest.json`, `main.js` and `styles.css` at the root.
+The compiled plugin files (`main.js`, `manifest.json`, `styles.css`) are generated in the repository root. Obsidian loads the plugin from these files.
+
+### Development Mode
+```bash
+# Watch mode (rebuilds on file changes)
+npm run dev
+```
+
+### Project Structure
+```
+chartnotes/
+├── src/
+│   ├── bases-view.ts      # Bases view integration
+│   ├── indexer.ts          # Note indexing
+│   ├── query.ts            # Data querying
+│   ├── renderer.ts         # Chart rendering
+│   ├── renderer/
+│   │   ├── bar.ts          # Bar chart renderer
+│   │   ├── line.ts         # Line/area chart renderer
+│   │   ├── pie.ts          # Pie chart renderer
+│   │   ├── scatter.ts      # Scatter plot renderer
+│   │   └── gantt.ts        # Gantt chart renderer
+│   └── types.ts            # TypeScript types
+├── main.ts                 # Plugin entry point
+├── manifest.json           # Plugin manifest
+└── package.json            # Dependencies
+```
 
 ---
 
-## License
+## 🤝 Contributing
 
-This project is released under a very permissive license
-(see the [`LICENSE`](./LICENSE) file for the full text).
-You can copy, modify and reuse the code in other projects, including closed
-source ones, at your own risk.
+Contributions are welcome! Here's how you can help:
 
-Contributions, issues and ideas are welcome!
+1. **Report bugs** – Open an issue describing the problem
+2. **Suggest features** – Share your ideas for improvements
+3. **Submit pull requests** – Fix bugs or add features
+4. **Improve documentation** – Help make the README and docs better
+5. **Share examples** – Show how you're using Chart Notes
+
+### Contribution Guidelines
+
+- Fork the repository
+- Create a feature branch (`git checkout -b feature/amazing-feature`)
+- Make your changes
+- Test thoroughly
+- Submit a pull request with a clear description
+
+---
+
+## 📝 License
+
+This project is licensed under the **MIT License** – see the [LICENSE](./LICENSE) file for details.
+
+You are free to:
+- ✅ Use the plugin commercially
+- ✅ Modify the code
+- ✅ Distribute the code
+- ✅ Use privately
+
+---
+
+## 🙏 Acknowledgments
+
+- Built for the Obsidian community
+- Powered by the Obsidian Bases API
+- Inspired by the need for better data visualization in note-taking
+
+---
+
+## 📞 Support
+
+- **Issues:** [GitHub Issues](https://github.com/marco7m/chartnotes/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/marco7m/chartnotes/discussions)
+
+---
+
+**Made with ❤️ for the Obsidian community**
