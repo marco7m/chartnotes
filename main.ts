@@ -79,7 +79,7 @@ export default class ChartNotesPlugin extends Plugin {
 						bar: "Bar",
 						"stacked-bar": "Stacked bar",
 						line: "Line",
-						area: "Area",
+						"stacked-area": "Stacked area",
 						pie: "Pie",
 						scatter: "Scatter",
 						gantt: "Gantt",
@@ -127,7 +127,7 @@ export default class ChartNotesPlugin extends Plugin {
 					key: "seriesProperty",
 					displayName: "Series / color (optional)",
 					description:
-					"Property that defines series / color for bars, lines and area.",
+					"Property that defines series / color for bars, lines and stacked area.",
 					shouldHide: (config: any) =>
 						String(config.get("chartType") ?? "bar") === "pie",
 				} as any);
@@ -139,7 +139,7 @@ export default class ChartNotesPlugin extends Plugin {
 					displayName: "Value aggregation (Y)",
 					description:
 					"How to aggregate Y when multiple notes share the same X/series.\n" +
-						"For line/area, 'Cumulative sum' turns the series into a running total.",
+						"For line/stacked-area, 'Cumulative sum' turns the series into a running total.",
 					default: "sum",
 					options: {
 						sum: "Sum",
@@ -159,7 +159,7 @@ export default class ChartNotesPlugin extends Plugin {
 					key: "xBucket",
 					displayName: "X bucket (dates)",
 					description:
-					"How to bucket dates on the X axis for line / area charts (day, week, month...).",
+					"How to bucket dates on the X axis for line / stacked area charts (day, week, month...).",
 					default: "auto",
 					options: {
 						auto: "Auto",
@@ -172,7 +172,7 @@ export default class ChartNotesPlugin extends Plugin {
 					} as Record<string, string>,
 					shouldHide: (config: any) => {
 						const t = String(config.get("chartType") ?? "bar");
-						return !(t === "line" || t === "area");
+						return !(t === "line" || t === "stacked-area");
 					},
 				} as any);
 

@@ -2,7 +2,7 @@
 import type { ChartSpec, QueryResult } from "./types";
 import { renderGantt } from "./renderer/gantt";
 import { renderBar, renderStackedBar } from "./renderer/bar";
-import { renderLine } from "./renderer/line";
+import { renderLine, renderStackedArea } from "./renderer/line";
 import { renderPie } from "./renderer/pie";
 import { renderScatter } from "./renderer/scatter";
 import type { RenderContext } from "./renderer/renderer-common";
@@ -34,8 +34,8 @@ export class PropChartsRenderer {
 			case "line":
 				renderLine(container, spec, data, false);
 				break;
-			case "area":
-				renderLine(container, spec, data, true);
+			case "stacked-area":
+				renderStackedArea(container, spec, data);
 				break;
 			case "pie":
 				renderPie(container, spec, data);

@@ -14,7 +14,7 @@ into bar, line, pie, scatter or Gantt charts – using your existing properties
   using Bases filters, sorts and groups.
 - Multiple chart types:
   - **Bar** and **Stacked bar**
-  - **Line** and **Area**
+  - **Line** and **Stacked area**
   - **Pie**
   - **Scatter**
   - **Gantt** timeline
@@ -22,7 +22,7 @@ into bar, line, pie, scatter or Gantt charts – using your existing properties
   - X axis / category
   - Y numeric value (or automatic count)
   - Series / color (status, project, priority…)
-- **Date-aware X axis** on line/area charts:
+- **Date-aware X axis** on line/stacked-area charts:
   spacing is proportional to time and can be bucketed by day/week/month/etc.
 - **Drilldown**: clicking a bar/point/slice opens a list of notes.
 - **Interactive Gantt**:
@@ -96,12 +96,12 @@ filters, search, group by, sorts… everything is reused.
 These options appear (or are reused) across several chart types.
 
 * **Chart type**
-  `Bar`, `Stacked bar`, `Line`, `Area`, `Pie`, `Scatter`, `Gantt`.
+  `Bar`, `Stacked bar`, `Line`, `Stacked area`, `Pie`, `Scatter`, `Gantt`.
 
 * **X axis / category (bars & slices)**
   Property used for the X axis or categories.
   For pie charts it defines the slices.
-  For line/area charts it is usually a **date** property.
+  For line/stacked-area charts it is usually a **date** property.
 
 * **Task label (Gantt)**
   Label shown on the left in the Gantt timeline.
@@ -115,7 +115,7 @@ These options appear (or are reused) across several chart types.
   Property used to split data into different series and colors
   (status, project, priority, assignee…).
 
-* **X bucket (dates)** – **line/area only**
+* **X bucket (dates)** – **line/stacked-area only**
   How to group dates on the X axis:
 
   * `auto`
@@ -134,7 +134,7 @@ These options appear (or are reused) across several chart types.
 
   * `Sum` – sum all Y values
   * `Count (ignore Y)` – ignore Y and just count notes
-  * `Cumulative sum` – line/area only; turns the series into a running total.
+  * `Cumulative sum` – line/stacked-area only; turns the series into a running total.
 
 * **Drilldown (click opens notes)**
   When enabled, clicking a point/bar/slice opens a side list of the notes
@@ -165,14 +165,14 @@ Recommended configuration:
 
 ---
 
-### Line & Area
+### Line & Stacked Area
 
 For metrics that evolve over time.
 
-* **Chart type:** `Line` or `Area`
+* **Chart type:** `Line` or `Stacked area`
 * **X axis / category:** a **date** property (created, scheduled, startDate…)
 * **Y value:** the numeric metric to plot (effort, value, count…)
-* **Series / color:** optional, to split the lines.
+* **Series / color:** optional, to split the lines (required for stacked area).
 
 Chart Notes:
 
@@ -182,7 +182,7 @@ Chart Notes:
 
   * `Sum`: sum values in each bucket
   * `Count (ignore Y)`: just count notes
-  * `Cumulative sum`: running total over time (line/area only).
+  * `Cumulative sum`: running total over time (line/stacked-area only).
 
 ---
 

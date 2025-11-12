@@ -13,7 +13,7 @@ const CHART_TYPES = [
 	"bar",
 	"stacked-bar",
 	"line",
-	"area",
+	"stacked-area",
 	"pie",
 	"scatter",
 	"gantt",
@@ -86,7 +86,7 @@ export class ChartNotesBasesView extends BasesView {
 		const isGantt = chartType === "gantt";
 
 		const aggModeCfg = normalizeAggregationMode(cfg?.get("aggregateMode"));
-		const allowCumulative = chartType === "line" || chartType === "area";
+		const allowCumulative = chartType === "line" || chartType === "stacked-area";
 		const aggMode: AggregationMode =
 			aggModeCfg === "cumulative-sum" && !allowCumulative ? "sum" : aggModeCfg;
 
@@ -561,6 +561,9 @@ export class ChartNotesBasesView extends BasesView {
 				});
 			}
 		}
+
+		// Reordenar globalmente por X para garantir ordem consistente
+		result.sort((a, b) => this.compareX(a.x, b.x));
 
 		return result;
 	}

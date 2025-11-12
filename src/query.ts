@@ -205,7 +205,7 @@ export class PropChartsQueryEngine {
       return this.runTable(spec, filtered);
     }
 
-    // padrão (bar / line / area / pie / scatter / stacked-bar)
+    // padrão (bar / line / stacked-area / pie / scatter / stacked-bar)
     return this.runStandard(spec, filtered);
   }
 
@@ -322,7 +322,7 @@ export class PropChartsQueryEngine {
   }
 
   // -------------------------------------------------------------
-  // STANDARD (bar / line / area / pie / scatter / stacked-bar)
+  // STANDARD (bar / line / stacked-area / pie / scatter / stacked-bar)
   // -------------------------------------------------------------
   private runStandard(spec: ChartSpec, notes: IndexedNote[]): QueryResult {
     const xField = spec.encoding?.x;
@@ -495,10 +495,10 @@ export class PropChartsQueryEngine {
       return sortDir === "asc" ? cmp : -cmp;
     });
 
-    // transforms: cumulative / rolling só para line/area
-    if ((cumulative || rolling) && !(spec.type === "line" || spec.type === "area")) {
+    // transforms: cumulative / rolling só para line/stacked-area
+    if ((cumulative || rolling) && !(spec.type === "line" || spec.type === "stacked-area")) {
       throw new Error(
-        "aggregate.cumulative / aggregate.rolling só são suportados em type: 'line' ou 'area'."
+        "aggregate.cumulative / aggregate.rolling só são suportados em type: 'line' ou 'stacked-area'."
       );
     }
     if (cumulative && rolling) {

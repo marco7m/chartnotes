@@ -3,7 +3,7 @@
 export type ChartType =
   | "bar"
   | "line"
-  | "area"
+  | "stacked-area"
   | "pie"
   | "scatter"
   | "stacked-bar"
