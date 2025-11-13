@@ -2,7 +2,7 @@
 
 > Transform your Obsidian notes into beautiful, interactive charts directly inside Bases.
 
-Chart Notes is a powerful Obsidian plugin that adds a **Chart Notes layout** to Bases, allowing you to visualize your note properties as bar charts, line graphs, pie charts, scatter plots, and Gantt timelines. No custom query language needed—it works seamlessly with your existing Bases filters, sorts, and groups.
+Chart Notes is a powerful Obsidian plugin that adds a **Chart Notes layout** to Bases, allowing you to visualize your note properties as bar charts, line graphs, pie charts, scatter plots, and Gantt timelines. No custom query language needed, it works seamlessly with your existing Bases filters, sorts, and groups.
 
 ![Obsidian](https://img.shields.io/badge/Obsidian-1.10%2B-7C3AED?logo=obsidian)
 ![License](https://img.shields.io/badge/license-MIT-green)
