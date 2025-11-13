@@ -270,7 +270,7 @@ export class ChartNotesBasesView extends BasesView {
 		const id = trimmed;
 		try {
 			const parsed = parsePropertyId(
-				id as `note.${string}` | `file.${string}` | `formula.${string}`,
+				id as `note.${string}` | `file.${string}`,
 			);
 			return { id, name: (parsed as any).name ?? id };
 		} catch {
