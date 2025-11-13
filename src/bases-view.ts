@@ -75,15 +75,6 @@ function normalizeAggregationMode(raw: unknown): AggregationMode {
 		: "sum") as AggregationMode;
 }
 
-/**
- * Normalizes X bucket mode from user input to allowed mode.
- */
-function normalizeXBucket(raw: unknown): XBucket {
-	const bucket = String(raw ?? "auto").trim().toLowerCase();
-	return (X_BUCKETS.includes(bucket as XBucket)
-		? bucket
-		: "auto") as XBucket;
-}
 
 export class ChartNotesBasesView extends BasesView {
 	readonly type = CHARTNOTES_BASES_VIEW_TYPE;
@@ -127,8 +118,8 @@ export class ChartNotesBasesView extends BasesView {
 		const aggMode: AggregationMode =
 			aggModeCfg === "cumulative-sum" && !allowCumulative ? "sum" : aggModeCfg;
 
-		const rawXBucket = normalizeXBucket(cfg?.get("xBucket"));
-		const xBucket: XBucket = isPie || isScatter || isGantt ? "none" : rawXBucket;
+		// Always use "auto" for date bucketing (equivalent to automatic date grouping)
+		const xBucket: XBucket = isPie || isScatter || isGantt ? "none" : "auto";
 
 		const xProp = this.getPropFromConfig("xProperty");
 		const ganttLabelProp = this.getPropFromConfig("ganttLabelProperty");
@@ -232,7 +223,6 @@ export class ChartNotesBasesView extends BasesView {
 			group: groupProp,
 			label: labelPropForGantt,
 			aggMode,
-			xBucket,
 			chartType,
 		});
 
@@ -864,7 +854,6 @@ export class ChartNotesBasesView extends BasesView {
 		group: SelectedProp;
 		label: SelectedProp;
 		aggMode: AggregationMode;
-		xBucket: XBucket;
 		chartType: AllowedChartType;
 	}): any {
 		// IMPORTANT: x/y here are property names,

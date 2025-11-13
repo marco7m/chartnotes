@@ -130,7 +130,6 @@ Ideal for time series and trends.
 - **X axis / category:** A **date** property (`created`, `scheduled`, `startDate`, etc.)
 - **Y value:** The numeric metric to plot (`effort`, `value`, `count`, etc.)
 - **Series / color:** Optional for line charts, **required** for stacked area
-- **X bucket:** How to group dates (`auto`, `day`, `week`, `month`, `quarter`, `year`)
 - **Value aggregation:** 
   - `Sum` – Sum values in each time bucket
   - `Count (ignore Y)` – Count notes per bucket
@@ -138,7 +137,7 @@ Ideal for time series and trends.
 
 **Features:**
 - **Date-aware spacing** – Points are spaced proportionally to real time distance
-- **Automatic bucketing** – Group dates by day/week/month for cleaner visualization
+- **Automatic date bucketing** – Dates are automatically grouped (day/week/month) for optimal visualization
 - **Cumulative sum** – Perfect for tracking running totals (e.g., total effort over time)
 
 ---
@@ -241,18 +240,6 @@ Property used to split data into different series and colors. Useful for:
 - Priority levels
 - Assignees
 - Any categorical property
-
-### X Bucket (dates) – Line/Stacked Area Only
-How to group dates on the X axis:
-- `auto` – Automatically choose best bucket size
-- `none` – No bucketing, use raw dates
-- `day` – Group by day
-- `week` – Group by week
-- `month` – Group by month
-- `quarter` – Group by quarter
-- `year` – Group by year
-
-When X is a date, horizontal spacing is **proportional to time**. This setting controls how values are grouped before plotting.
 
 ### Value Aggregation (Y)
 How multiple notes with the same X/series are combined:

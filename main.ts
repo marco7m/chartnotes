@@ -160,29 +160,6 @@ export default class ChartNotesPlugin extends Plugin {
 					},
 				} as any);
 
-				// Date bucketing on X axis (line / area only)
-				opts.push({
-					type: "dropdown",
-					key: "xBucket",
-					displayName: "X bucket (dates)",
-					description:
-						"How to bucket dates on the X axis for line / stacked area charts (day, week, month...).",
-					default: "auto",
-					options: {
-						auto: "Auto",
-						none: "None",
-						day: "Day",
-						week: "Week",
-						month: "Month",
-						quarter: "Quarter",
-						year: "Year",
-					} as Record<string, string>,
-					shouldHide: (config: any) => {
-						const chartType = String(config.get("chartType") ?? "bar");
-						return !(chartType === "line" || chartType === "stacked-area");
-					},
-				} as any);
-
 				// Gantt-specific options
 				opts.push({
 					type: "property",
