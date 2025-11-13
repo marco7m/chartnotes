@@ -12,6 +12,7 @@ import {
 } from "obsidian";
 import type { ChartSpec, QueryResult, QueryResultRow } from "./types";
 import type { PropChartsRenderer, RenderContext } from "./renderer";
+import { toDate } from "./utils";
 
 // ============================================================================
 // Constants
@@ -688,13 +689,24 @@ export class ChartNotesBasesView extends BasesView {
 				const rawValue = this.readValue(entry, metricProp);
 				if (rawValue == null) continue;
 
+				const trimmed = rawValue.trim();
+				
+				// Check if it looks like an ISO date first (YYYY-MM-DD)
+				// This takes priority over number parsing
+				const looksLikeDate = /^\d{4}-\d{2}-\d{2}/.test(trimmed);
+				
+				// Try to parse as date if it looks like a date format
+				let isDate = false;
+				let date: Date | null = null;
+				if (looksLikeDate) {
+					date = toDate(rawValue);
+					isDate = date !== null;
+				}
+				
 				// Try to parse as number
-				const num = Number(rawValue);
-				const isNumber = !Number.isNaN(num) && Number.isFinite(num);
-
-				// Try to parse as date
-				const date = this.parseDate(rawValue);
-				const isDate = date !== null;
+				// But don't treat pure digit strings as numbers if they're dates
+				const num = Number(trimmed);
+				const isNumber = !Number.isNaN(num) && Number.isFinite(num) && (!looksLikeDate || !isDate);
 
 				values.push({
 					value: rawValue,
@@ -711,11 +723,28 @@ export class ChartNotesBasesView extends BasesView {
 		if (dataTypeOverride !== "auto") {
 			dataType = dataTypeOverride as "number" | "date" | "text";
 		} else if (values.length > 0) {
-			// Auto-detect: check first non-null value
-			const first = values[0];
-			if (first.isNumber) {
+			// Auto-detect: use voting strategy - count how many values are numbers vs dates
+			// This is more robust than checking only the first value
+			let numberCount = 0;
+			let dateCount = 0;
+			
+			for (const v of values) {
+				if (v.isNumber) numberCount++;
+				if (v.isDate) dateCount++;
+			}
+			
+			// If majority are numbers, treat as number
+			// If majority are dates, treat as date
+			// Otherwise, default to text
+			if (numberCount > dateCount && numberCount > 0) {
 				dataType = "number";
-			} else if (first.isDate) {
+			} else if (dateCount > numberCount && dateCount > 0) {
+				dataType = "date";
+			} else if (numberCount > 0) {
+				// If we have any numbers but dates are equal or less, prefer number
+				dataType = "number";
+			} else if (dateCount > 0) {
+				// If we have any dates but no numbers, use date
 				dataType = "date";
 			}
 		}
