@@ -60,13 +60,17 @@ function getOperationName(operation: string): string {
 	const names: Record<string, string> = {
 		count: "Count notes",
 		"count-value": "Count notes with value",
+		"count-date": "Count notes with date",
 		sum: "Sum of values",
 		avg: "Average of values",
 		min: "Smallest value",
 		max: "Largest value",
-		"count-date": "Count notes with date",
 		oldest: "Oldest date",
 		newest: "Newest date",
+		dateRange: "Date range (newest - oldest)",
+		// UI operation names (for display)
+		countAll: "Count all notes",
+		countNonEmpty: "Count notes where property is set",
 	};
 	return names[operation] || operation;
 }
@@ -144,7 +148,13 @@ export function renderMetric(
 				subtext = "Newest";
 			}
 		} else if (typeof metricValue === "number") {
-			displayValue = formatNumber(metricValue, decimals, prefix, suffix);
+			// Special handling for dateRange (shows as number of days)
+			if (metricOperation === "dateRange") {
+				displayValue = formatNumber(metricValue, decimals, prefix, suffix);
+				subtext = "Days";
+			} else {
+				displayValue = formatNumber(metricValue, decimals, prefix, suffix);
+			}
 		} else {
 			displayValue = String(metricValue);
 		}
@@ -192,13 +202,16 @@ export function renderMetric(
 	const tooltip = card.createDiv({ cls: "prop-charts-metric-tooltip" });
 	tooltip.style.display = "none";
 
-	const tooltipText = [
-		metricDataType ? `Property type: ${metricDataType}` : "",
-		metricOperation ? `Operation: ${getOperationName(metricOperation)}` : "",
-		`Notes: ${notesCount}`,
-	]
-		.filter(Boolean)
-		.join("\n");
+	// Build tooltip text
+	const tooltipParts: string[] = [];
+	if (metricDataType) {
+		tooltipParts.push(`Data type: ${metricDataType}`);
+	}
+	if (metricOperation) {
+		tooltipParts.push(`Operation: ${getOperationName(metricOperation)}`);
+	}
+	tooltipParts.push(`Notes: ${notesCount}`);
+	const tooltipText = tooltipParts.join("\n");
 
 	infoIcon.addEventListener("mouseenter", (ev: MouseEvent) => {
 		const rect = card.getBoundingClientRect();

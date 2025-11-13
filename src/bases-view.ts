@@ -175,13 +175,25 @@ export class ChartNotesBasesView extends BasesView {
 
 		if (isMetric) {
 			const metricProp = this.getPropFromConfig("metricProperty");
-			const metricOp = String(cfg?.get("metricOperation") ?? "count");
-			const metricDataType = String(cfg?.get("metricDataType") ?? "auto");
+			const metricDataType = String(cfg?.get("metricDataType") ?? "number");
+			
+			// Determine which operation field to use based on selected type
+			let metricOp: string;
+			if (metricDataType === "date") {
+				// Use dateOperation field
+				metricOp = String(cfg?.get("metricDateOperation") ?? "countNonEmpty");
+			} else {
+				// Use metricOperation field for number, text, or when no property
+				metricOp = String(cfg?.get("metricOperation") ?? "countAll");
+			}
+			
+			// Build rows - the function will validate/reset operation if needed
 			rows = this.buildRowsForMetric(
 				grouped,
 				metricProp,
 				metricOp,
 				metricDataType,
+				cfg,
 			);
 		} else if (isGantt) {
 			rows = this.buildRowsForGantt(
@@ -652,12 +664,123 @@ export class ChartNotesBasesView extends BasesView {
 	}
 
 	/**
+	 * Detects the data type of a property by sampling values from entries
+	 * 
+	 * @param groups - Grouped data from Bases
+	 * @param metricProp - Property to detect type for
+	 * @returns Detected data type: "number", "date", or "text"
+	 */
+	private detectMetricPropertyType(
+		groups: any[],
+		metricProp: SelectedProp,
+	): "number" | "date" | "text" {
+		if (!metricProp.id) return "text";
+
+		const values: Array<{ isNumber: boolean; isDate: boolean }> = [];
+		const maxSamples = 20; // Sample up to 20 values for detection
+		let samples = 0;
+
+		for (const group of groups) {
+			if (samples >= maxSamples) break;
+			for (const entry of group.entries as any[]) {
+				if (samples >= maxSamples) break;
+
+				const rawValue = this.readValue(entry, metricProp);
+				if (rawValue == null) continue;
+
+				const trimmed = rawValue.trim();
+				const looksLikeDate = /^\d{4}-\d{2}-\d{2}/.test(trimmed);
+
+				let isDate = false;
+				if (looksLikeDate) {
+					const date = toDate(rawValue);
+					isDate = date !== null;
+				}
+
+				const num = Number(trimmed);
+				const isNumber = !Number.isNaN(num) && Number.isFinite(num) && (!looksLikeDate || !isDate);
+
+				values.push({ isNumber, isDate });
+				samples++;
+			}
+		}
+
+		if (values.length === 0) return "text";
+
+		// Voting strategy
+		let numberCount = 0;
+		let dateCount = 0;
+
+		for (const v of values) {
+			if (v.isNumber) numberCount++;
+			if (v.isDate) dateCount++;
+		}
+
+		if (numberCount > dateCount && numberCount > 0) {
+			return "number";
+		} else if (dateCount > numberCount && dateCount > 0) {
+			return "date";
+		} else if (numberCount > 0) {
+			return "number";
+		} else if (dateCount > 0) {
+			return "date";
+		}
+
+		return "text";
+	}
+
+	/**
+	 * Gets valid operations for a given effective type and property state
+	 */
+	private getValidOperationsForType(
+		effectiveType: "number" | "date" | "text",
+		hasProperty: boolean
+	): string[] {
+		if (!hasProperty) {
+			return ["countAll"];
+		}
+
+		switch (effectiveType) {
+			case "number":
+				return ["countAll", "countNonEmpty", "sum", "avg", "min", "max"];
+			case "date":
+				return ["countAll", "countNonEmpty", "oldest", "newest", "dateRange"];
+			case "text":
+				return ["countAll", "countNonEmpty"];
+			default:
+				return ["countAll", "countNonEmpty"];
+		}
+	}
+
+	/**
+	 * Gets default operation when property or type changes
+	 */
+	private getDefaultOperationForType(
+		effectiveType: "number" | "date" | "text",
+		hasProperty: boolean
+	): string {
+		if (!hasProperty) {
+			return "countAll";
+		}
+		switch (effectiveType) {
+			case "number":
+			case "text":
+				return "countNonEmpty";
+			case "date":
+				return "countNonEmpty";
+			default:
+				return "countAll";
+		}
+	}
+
+	/**
 	 * Builds a single row for metric/indicator widget
 	 * 
 	 * @param groups - Grouped data from Bases
 	 * @param metricProp - Property to measure (null = count notes)
-	 * @param operation - Operation to perform (count, sum, avg, min, max, oldest, newest)
+	 * @param operation - Operation to perform (UI operation name)
 	 * @param dataTypeOverride - Data type override ("auto", "number", "date", "text")
+	 * @param cfg - Configuration object to access dateOperation if needed
 	 * @returns Single QueryResultRow with calculated metric value
 	 */
 	private buildRowsForMetric(
@@ -665,6 +788,7 @@ export class ChartNotesBasesView extends BasesView {
 		metricProp: SelectedProp,
 		operation: string,
 		dataTypeOverride: string,
+		cfg?: any,
 	): QueryResultRow[] {
 		const notes: string[] = [];
 		const values: Array<{
@@ -674,6 +798,8 @@ export class ChartNotesBasesView extends BasesView {
 			parsedNumber: number | null;
 			parsedDate: Date | null;
 		}> = [];
+
+		const hasProperty = !!metricProp.id;
 
 		// Collect all entries and their values
 		for (const group of groups) {
@@ -692,7 +818,6 @@ export class ChartNotesBasesView extends BasesView {
 				const trimmed = rawValue.trim();
 				
 				// Check if it looks like an ISO date first (YYYY-MM-DD)
-				// This takes priority over number parsing
 				const looksLikeDate = /^\d{4}-\d{2}-\d{2}/.test(trimmed);
 				
 				// Try to parse as date if it looks like a date format
@@ -704,7 +829,6 @@ export class ChartNotesBasesView extends BasesView {
 				}
 				
 				// Try to parse as number
-				// But don't treat pure digit strings as numbers if they're dates
 				const num = Number(trimmed);
 				const isNumber = !Number.isNaN(num) && Number.isFinite(num) && (!looksLikeDate || !isDate);
 
@@ -718,34 +842,24 @@ export class ChartNotesBasesView extends BasesView {
 			}
 		}
 
-		// Determine data type
-		let dataType: "number" | "date" | "text" = "text";
-		if (dataTypeOverride !== "auto") {
-			dataType = dataTypeOverride as "number" | "date" | "text";
-		} else if (values.length > 0) {
-			// Auto-detect: use voting strategy - count how many values are numbers vs dates
-			// This is more robust than checking only the first value
-			let numberCount = 0;
-			let dateCount = 0;
-			
-			for (const v of values) {
-				if (v.isNumber) numberCount++;
-				if (v.isDate) dateCount++;
-			}
-			
-			// If majority are numbers, treat as number
-			// If majority are dates, treat as date
-			// Otherwise, default to text
-			if (numberCount > dateCount && numberCount > 0) {
-				dataType = "number";
-			} else if (dateCount > numberCount && dateCount > 0) {
-				dataType = "date";
-			} else if (numberCount > 0) {
-				// If we have any numbers but dates are equal or less, prefer number
-				dataType = "number";
-			} else if (dateCount > 0) {
-				// If we have any dates but no numbers, use date
-				dataType = "date";
+		// Use the selected data type (no auto-detect)
+		const effectiveType: "number" | "date" | "text" =
+			dataTypeOverride as "number" | "date" | "text";
+
+		// Validate and reset operation if needed
+		const validOperations = this.getValidOperationsForType(effectiveType, hasProperty);
+		let validOperation = operation;
+		
+		if (!validOperations.includes(operation)) {
+			// Operation is invalid for current context, reset to default
+			validOperation = this.getDefaultOperationForType(effectiveType, hasProperty);
+			// Also try to update the config if possible to reflect the reset
+			if (cfg && effectiveType === "text" && (operation === "sum" || operation === "avg" || operation === "min" || operation === "max")) {
+				try {
+					cfg.set("metricOperation", validOperation);
+				} catch (e) {
+					// Ignore if we can't write to config
+				}
 			}
 		}
 
@@ -753,41 +867,52 @@ export class ChartNotesBasesView extends BasesView {
 		let resultValue: number | Date | string = 0;
 		let errorMessage: string | null = null;
 
-		if (!metricProp.id) {
-			// No property = count notes
+		if (validOperation === "countAll") {
+			// Count all notes (regardless of property)
 			resultValue = notes.length;
-		} else if (operation === "count" || operation === "count-value" || operation === "count-date") {
-			// Count operations
+		} else if (!hasProperty) {
+			// No property but operation requires one
+			errorMessage = "Operation requires a property to be selected";
+			resultValue = 0;
+		} else if (validOperation === "countNonEmpty") {
+			// Count notes where property is set
 			resultValue = values.length;
-		} else if (dataType === "number") {
-			// Numeric operations
-			const numbers = values
-				.map((v) => v.parsedNumber)
-				.filter((n): n is number => n !== null);
-
-			if (numbers.length === 0) {
+		} else if (effectiveType === "number") {
+			// Numeric operations only
+			// dateRange is not valid for number type
+			if (validOperation === "dateRange" || validOperation === "oldest" || validOperation === "newest") {
+				errorMessage = "Operation incompatible with data type";
 				resultValue = 0;
 			} else {
-				switch (operation) {
-					case "sum":
-						resultValue = numbers.reduce((a, b) => a + b, 0);
-						break;
-					case "avg":
-						resultValue = numbers.reduce((a, b) => a + b, 0) / numbers.length;
-						break;
-					case "min":
-						resultValue = Math.min(...numbers);
-						break;
-					case "max":
-						resultValue = Math.max(...numbers);
-						break;
-					default:
-						errorMessage = "Operation incompatible with data type";
-						resultValue = 0;
+				const numbers = values
+					.map((v) => v.parsedNumber)
+					.filter((n): n is number => n !== null);
+
+				if (numbers.length === 0) {
+					resultValue = 0;
+				} else {
+					switch (validOperation) {
+						case "sum":
+							resultValue = numbers.reduce((a, b) => a + b, 0);
+							break;
+						case "avg":
+							resultValue = numbers.reduce((a, b) => a + b, 0) / numbers.length;
+							break;
+						case "min":
+							resultValue = Math.min(...numbers);
+							break;
+						case "max":
+							resultValue = Math.max(...numbers);
+							break;
+						default:
+							errorMessage = "Operation incompatible with data type";
+							resultValue = 0;
+					}
 				}
 			}
-		} else if (dataType === "date") {
-			// Date operations
+		} else if (effectiveType === "date") {
+			// Date operations only
+			// Ensure dateRange, oldest, newest are only processed here
 			const dates = values
 				.map((v) => v.parsedDate)
 				.filter((d): d is Date => d !== null);
@@ -795,24 +920,36 @@ export class ChartNotesBasesView extends BasesView {
 			if (dates.length === 0) {
 				resultValue = 0;
 			} else {
-				switch (operation) {
+				switch (validOperation) {
 					case "oldest":
 						resultValue = new Date(Math.min(...dates.map((d) => d.getTime())));
 						break;
 					case "newest":
 						resultValue = new Date(Math.max(...dates.map((d) => d.getTime())));
 						break;
+					case "dateRange": {
+						// Calculate date range in days (newest - oldest)
+						const oldest = new Date(Math.min(...dates.map((d) => d.getTime())));
+						const newest = new Date(Math.max(...dates.map((d) => d.getTime())));
+						const diffMs = newest.getTime() - oldest.getTime();
+						const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+						resultValue = diffDays;
+						break;
+					}
 					default:
+						// Numeric operations (sum, avg, min, max) are not valid for date type
 						errorMessage = "Operation incompatible with data type";
 						resultValue = 0;
 				}
 			}
 		} else {
-			// Text type - only count is valid
-			if (operation !== "count" && operation !== "count-value") {
+			// Text type - only count operations are valid
+			if (validOperation === "countNonEmpty") {
+				resultValue = values.length;
+			} else {
 				errorMessage = "Operation incompatible with data type";
+				resultValue = 0;
 			}
-			resultValue = values.length;
 		}
 
 		// Return single row
@@ -824,8 +961,9 @@ export class ChartNotesBasesView extends BasesView {
 				props: {
 					_metricValue: resultValue,
 					_metricError: errorMessage,
-					_metricDataType: dataType,
-					_metricOperation: operation,
+					_metricDataType: effectiveType,
+					_metricOperation: validOperation,
+					_metricOriginalOperation: operation,
 				},
 			} as QueryResultRow,
 		];
