@@ -27,6 +27,7 @@ const CHART_TYPES = [
 	"pie",
 	"scatter",
 	"gantt",
+	"metric",
 ] as const;
 
 const AGGREGATION_MODES = ["sum", "count", "cumulative-sum"] as const;
@@ -112,6 +113,7 @@ export class ChartNotesBasesView extends BasesView {
 		const isPie = chartType === "pie";
 		const isScatter = chartType === "scatter";
 		const isGantt = chartType === "gantt";
+		const isMetric = chartType === "metric";
 
 		const aggModeCfg = normalizeAggregationMode(cfg?.get("aggregateMode"));
 		const allowCumulative = chartType === "line" || chartType === "stacked-area";
@@ -135,7 +137,7 @@ export class ChartNotesBasesView extends BasesView {
 		const durationProp = this.getPropFromConfig("durationProperty");
 		const groupProp = this.getPropFromConfig("groupProperty");
 
-		if (!isGantt && !xProp.id) {
+		if (!isGantt && !isMetric && !xProp.id) {
 			this.rootEl.createDiv({
 				cls: "prop-charts-empty",
 				text: "Configure the 'X axis / category' property in view options.",
@@ -170,7 +172,17 @@ export class ChartNotesBasesView extends BasesView {
 
 		let rows: QueryResultRow[];
 
-		if (isGantt) {
+		if (isMetric) {
+			const metricProp = this.getPropFromConfig("metricProperty");
+			const metricOp = String(cfg?.get("metricOperation") ?? "count");
+			const metricDataType = String(cfg?.get("metricDataType") ?? "auto");
+			rows = this.buildRowsForMetric(
+				grouped,
+				metricProp,
+				metricOp,
+				metricDataType,
+			);
+		} else if (isGantt) {
 			rows = this.buildRowsForGantt(
 				grouped,
 				labelPropForGantt,
@@ -226,14 +238,26 @@ export class ChartNotesBasesView extends BasesView {
 			chartType,
 		});
 
+		// Build options object with metric-specific configuration
+		const options: any = {
+			title,
+			drilldown,
+		};
+
+		if (isMetric) {
+			options.metricLabel = (cfg?.get("metricLabel") as string | undefined) ?? "";
+			options.metricLabelPosition = (cfg?.get("metricLabelPosition") as string | undefined) ?? "above";
+			options.metricDecimals = (cfg?.get("metricDecimals") as string | undefined) ?? "0";
+			options.metricPrefix = (cfg?.get("metricPrefix") as string | undefined) ?? "";
+			options.metricSuffix = (cfg?.get("metricSuffix") as string | undefined) ?? "";
+			options.metricColor = (cfg?.get("metricColor") as string | undefined) ?? "auto";
+		}
+
 		const spec: ChartSpec = {
 			type: chartType as any,
 			source: { type: "properties", query: "" } as any,
 			encoding: encoding as any,
-			options: {
-				title,
-				drilldown,
-			},
+			options,
 		};
 
 		const ctx: RenderContext = {
@@ -624,6 +648,158 @@ export class ChartNotesBasesView extends BasesView {
 		result.sort((a, b) => this.compareX(a.x, b.x));
 
 		return result;
+	}
+
+	/**
+	 * Builds a single row for metric/indicator widget
+	 * 
+	 * @param groups - Grouped data from Bases
+	 * @param metricProp - Property to measure (null = count notes)
+	 * @param operation - Operation to perform (count, sum, avg, min, max, oldest, newest)
+	 * @param dataTypeOverride - Data type override ("auto", "number", "date", "text")
+	 * @returns Single QueryResultRow with calculated metric value
+	 */
+	private buildRowsForMetric(
+		groups: any[],
+		metricProp: SelectedProp,
+		operation: string,
+		dataTypeOverride: string,
+	): QueryResultRow[] {
+		const notes: string[] = [];
+		const values: Array<{
+			value: any;
+			isNumber: boolean;
+			isDate: boolean;
+			parsedNumber: number | null;
+			parsedDate: Date | null;
+		}> = [];
+
+		// Collect all entries and their values
+		for (const group of groups) {
+			for (const entry of group.entries as any[]) {
+				const file = entry.file;
+				if (file?.path) notes.push(file.path);
+
+				if (!metricProp.id) {
+					// No property = just count notes
+					continue;
+				}
+
+				const rawValue = this.readValue(entry, metricProp);
+				if (rawValue == null) continue;
+
+				// Try to parse as number
+				const num = Number(rawValue);
+				const isNumber = !Number.isNaN(num) && Number.isFinite(num);
+
+				// Try to parse as date
+				const date = this.parseDate(rawValue);
+				const isDate = date !== null;
+
+				values.push({
+					value: rawValue,
+					isNumber,
+					isDate,
+					parsedNumber: isNumber ? num : null,
+					parsedDate: date,
+				});
+			}
+		}
+
+		// Determine data type
+		let dataType: "number" | "date" | "text" = "text";
+		if (dataTypeOverride !== "auto") {
+			dataType = dataTypeOverride as "number" | "date" | "text";
+		} else if (values.length > 0) {
+			// Auto-detect: check first non-null value
+			const first = values[0];
+			if (first.isNumber) {
+				dataType = "number";
+			} else if (first.isDate) {
+				dataType = "date";
+			}
+		}
+
+		// Calculate result based on operation
+		let resultValue: number | Date | string = 0;
+		let errorMessage: string | null = null;
+
+		if (!metricProp.id) {
+			// No property = count notes
+			resultValue = notes.length;
+		} else if (operation === "count" || operation === "count-value" || operation === "count-date") {
+			// Count operations
+			resultValue = values.length;
+		} else if (dataType === "number") {
+			// Numeric operations
+			const numbers = values
+				.map((v) => v.parsedNumber)
+				.filter((n): n is number => n !== null);
+
+			if (numbers.length === 0) {
+				resultValue = 0;
+			} else {
+				switch (operation) {
+					case "sum":
+						resultValue = numbers.reduce((a, b) => a + b, 0);
+						break;
+					case "avg":
+						resultValue = numbers.reduce((a, b) => a + b, 0) / numbers.length;
+						break;
+					case "min":
+						resultValue = Math.min(...numbers);
+						break;
+					case "max":
+						resultValue = Math.max(...numbers);
+						break;
+					default:
+						errorMessage = "Operation incompatible with data type";
+						resultValue = 0;
+				}
+			}
+		} else if (dataType === "date") {
+			// Date operations
+			const dates = values
+				.map((v) => v.parsedDate)
+				.filter((d): d is Date => d !== null);
+
+			if (dates.length === 0) {
+				resultValue = 0;
+			} else {
+				switch (operation) {
+					case "oldest":
+						resultValue = new Date(Math.min(...dates.map((d) => d.getTime())));
+						break;
+					case "newest":
+						resultValue = new Date(Math.max(...dates.map((d) => d.getTime())));
+						break;
+					default:
+						errorMessage = "Operation incompatible with data type";
+						resultValue = 0;
+				}
+			}
+		} else {
+			// Text type - only count is valid
+			if (operation !== "count" && operation !== "count-value") {
+				errorMessage = "Operation incompatible with data type";
+			}
+			resultValue = values.length;
+		}
+
+		// Return single row
+		return [
+			{
+				x: resultValue instanceof Date ? resultValue.toISOString().slice(0, 10) : String(resultValue),
+				y: resultValue instanceof Date ? resultValue.getTime() : (typeof resultValue === "number" ? resultValue : 0),
+				notes,
+				props: {
+					_metricValue: resultValue,
+					_metricError: errorMessage,
+					_metricDataType: dataType,
+					_metricOperation: operation,
+				},
+			} as QueryResultRow,
+		];
 	}
 
 	private buildRowsForScatter(

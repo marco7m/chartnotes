@@ -5,6 +5,7 @@ import { renderBar, renderStackedBar } from "./renderer/bar";
 import { renderLine, renderStackedArea } from "./renderer/line";
 import { renderPie } from "./renderer/pie";
 import { renderScatter } from "./renderer/scatter";
+import { renderMetric } from "./renderer/metric";
 import type { RenderContext } from "./renderer/renderer-common";
 
 export class PropChartsRenderer {
@@ -18,10 +19,13 @@ export class PropChartsRenderer {
 		container.empty();
 		container.addClass("prop-charts-container");
 
-		const header = container.createDiv({ cls: "prop-charts-title-row" });
-		const titleEl = header.createDiv({ cls: "prop-charts-title" });
-		if (title) {
-			titleEl.textContent = title;
+		// Metric widgets don't show title in header (they have their own label)
+		if (spec.type !== "metric") {
+			const header = container.createDiv({ cls: "prop-charts-title-row" });
+			const titleEl = header.createDiv({ cls: "prop-charts-title" });
+			if (title) {
+				titleEl.textContent = title;
+			}
 		}
 
 		switch (spec.type) {
@@ -45,6 +49,9 @@ export class PropChartsRenderer {
 				break;
 			case "gantt":
 				renderGantt(container, spec, data, ctx);
+				break;
+			case "metric":
+				renderMetric(container, spec, data);
 				break;
 			default:
 				container.createDiv({

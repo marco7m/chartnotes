@@ -8,7 +8,8 @@ export type ChartType =
   | "scatter"
   | "stacked-bar"
   | "table"
-  | "gantt";
+  | "gantt"
+  | "metric";
 
 
 export interface ChartSpec {
@@ -42,6 +43,13 @@ export interface ChartSpec {
     background?: string;
     drilldown?: boolean;
     tooltipFields?: string[]; // NOVO: campos extras no tooltip + modal
+    // Metric/Indicator widget options
+    metricLabel?: string;
+    metricLabelPosition?: string;
+    metricDecimals?: string;
+    metricPrefix?: string;
+    metricSuffix?: string;
+    metricColor?: string;
   };
 }
 

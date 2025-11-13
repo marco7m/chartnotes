@@ -89,6 +89,7 @@ export default class ChartNotesPlugin extends Plugin {
 						pie: "Pie",
 						scatter: "Scatter",
 						gantt: "Gantt",
+						metric: "Indicator",
 					} as Record<string, string>,
 				} as any);
 
@@ -99,8 +100,10 @@ export default class ChartNotesPlugin extends Plugin {
 					displayName: "X axis / category (bars & slices)",
 					description:
 						"Property used for the X axis or categories (for pie, this is the slice).",
-					shouldHide: (config: any) =>
-						String(config.get("chartType") ?? "bar") === "gantt",
+					shouldHide: (config: any) => {
+						const chartType = String(config.get("chartType") ?? "bar");
+						return chartType === "gantt" || chartType === "metric";
+					},
 				} as any);
 
 				// Gantt-specific label (optional – if empty uses note title)
@@ -123,7 +126,7 @@ export default class ChartNotesPlugin extends Plugin {
 						"Numeric property summed on the Y axis.\nLeave empty to just count notes.",
 					shouldHide: (config: any) => {
 						const chartType = String(config.get("chartType") ?? "bar");
-						return chartType === "pie" || chartType === "gantt";
+						return chartType === "pie" || chartType === "gantt" || chartType === "metric";
 					},
 				} as any);
 
@@ -134,8 +137,10 @@ export default class ChartNotesPlugin extends Plugin {
 					displayName: "Series / color (optional)",
 					description:
 						"Property that defines series / color for bars, lines and stacked area.",
-					shouldHide: (config: any) =>
-						String(config.get("chartType") ?? "bar") === "pie",
+					shouldHide: (config: any) => {
+						const chartType = String(config.get("chartType") ?? "bar");
+						return chartType === "pie" || chartType === "metric";
+					},
 				} as any);
 
 				// Value aggregation (Y) – how to combine multiple notes with same X/series
@@ -156,7 +161,8 @@ export default class ChartNotesPlugin extends Plugin {
 						const chartType = String(config.get("chartType") ?? "bar");
 						// Doesn't make sense for scatter and gantt, which are row-by-row
 						// Stacked-bar always uses sum aggregation
-						return chartType === "scatter" || chartType === "gantt" || chartType === "stacked-bar";
+						// Metric has its own operation selector
+						return chartType === "scatter" || chartType === "gantt" || chartType === "stacked-bar" || chartType === "metric";
 					},
 				} as any);
 
@@ -204,6 +210,8 @@ export default class ChartNotesPlugin extends Plugin {
 					key: "drilldown",
 					displayName: "Drilldown (click opens notes)",
 					default: true,
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") === "metric",
 				} as any);
 
 				// Título
@@ -212,6 +220,137 @@ export default class ChartNotesPlugin extends Plugin {
 					key: "title",
 					displayName: "Title (optional)",
 					description: "Custom chart title.\nFalls back to the view name.",
+				} as any);
+
+				// =================================================================
+				// Metric/Indicator Widget Configuration
+				// =================================================================
+
+				// Section 1: What to Measure
+				opts.push({
+					type: "property",
+					key: "metricProperty",
+					displayName: "Property",
+					description:
+						"Property to measure.\nLeave empty to count all notes in this view.",
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") !== "metric",
+				} as any);
+
+				// Section 2: How to Calculate
+				opts.push({
+					type: "dropdown",
+					key: "metricOperation",
+					displayName: "How to calculate",
+					description: "Operation to perform on the selected property.",
+					default: "count",
+					options: {
+						count: "Count notes",
+						"count-value": "Count notes with value",
+						sum: "Sum of values",
+						avg: "Average of values",
+						min: "Smallest value",
+						max: "Largest value",
+						"count-date": "Count notes with date",
+						oldest: "Oldest date",
+						newest: "Newest date",
+					} as Record<string, string>,
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") !== "metric",
+				} as any);
+
+				opts.push({
+					type: "dropdown",
+					key: "metricDataType",
+					displayName: "Data type",
+					description:
+						"Type of data in the property.\nAuto-detected, but you can override if needed.",
+					default: "auto",
+					options: {
+						auto: "Auto-detect",
+						number: "Number",
+						date: "Date",
+						text: "Text/Other (count only)",
+					} as Record<string, string>,
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") !== "metric",
+				} as any);
+
+				// Section 3: How to Display
+				opts.push({
+					type: "text",
+					key: "metricLabel",
+					displayName: "Label",
+					description: "Text to display with the number.\ne.g., Total tasks, Average duration",
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") !== "metric",
+				} as any);
+
+				opts.push({
+					type: "dropdown",
+					key: "metricLabelPosition",
+					displayName: "Label position",
+					description: "Where to show the label relative to the number.",
+					default: "above",
+					options: {
+						above: "Label above number",
+						below: "Label below number",
+					} as Record<string, string>,
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") !== "metric",
+				} as any);
+
+				opts.push({
+					type: "dropdown",
+					key: "metricDecimals",
+					displayName: "Decimal places",
+					description: "Number of decimal places to show.",
+					default: "0",
+					options: {
+						"0": "0",
+						"1": "1",
+						"2": "2",
+						"3": "3",
+					} as Record<string, string>,
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") !== "metric",
+				} as any);
+
+				opts.push({
+					type: "text",
+					key: "metricPrefix",
+					displayName: "Prefix (optional)",
+					description: "Text to show before the number.\ne.g., R$, %, #",
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") !== "metric",
+				} as any);
+
+				opts.push({
+					type: "text",
+					key: "metricSuffix",
+					displayName: "Suffix (optional)",
+					description: "Text to show after the number.\ne.g., h, days, units, %",
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") !== "metric",
+				} as any);
+
+				opts.push({
+					type: "dropdown",
+					key: "metricColor",
+					displayName: "Highlight color",
+					description: "Color for the number display.",
+					default: "auto",
+					options: {
+						auto: "Automatic (theme)",
+						accent: "Accent color",
+						green: "Green",
+						red: "Red",
+						blue: "Blue",
+						orange: "Orange",
+						purple: "Purple",
+					} as Record<string, string>,
+					shouldHide: (config: any) =>
+						String(config.get("chartType") ?? "bar") !== "metric",
 				} as any);
 
 				return opts as any;

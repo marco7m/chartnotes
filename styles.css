@@ -345,3 +345,88 @@
 /* Contraste por tema */
 .theme-dark .chartnotes-bases-view svg text.lane-label { fill: var(--text-normal, #d1d1d1); opacity: .95; }
 .theme-light .chartnotes-bases-view svg text.lane-label { fill: var(--text-normal, #1f1f1f); opacity: .95; }
+
+/* Metric/Indicator Widget Styles ----------------------------*/
+.prop-charts-metric {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+.prop-charts-metric-card {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 32px 24px;
+  min-width: 200px;
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease;
+}
+
+.prop-charts-metric-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.prop-charts-metric-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prop-charts-metric-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.prop-charts-metric-value {
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-accent, #5b6cff);
+  margin: 8px 0;
+  word-break: break-word;
+}
+
+.prop-charts-metric-subtext {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.prop-charts-metric-info {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 14px;
+  color: var(--text-muted);
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.prop-charts-metric-info:hover {
+  opacity: 1;
+}
+
+.prop-charts-metric-tooltip {
+  position: absolute;
+  background: var(--background-primary-alt, rgba(0,0,0,0.9));
+  color: var(--text-on-primary, #fff);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-line;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  backdrop-filter: blur(4px);
+  min-width: 150px;
+  max-width: 280px;
+}

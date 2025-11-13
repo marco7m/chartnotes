@@ -18,6 +18,7 @@ Chart Notes is a powerful Obsidian plugin that adds a **Chart Notes layout** to 
 - **Pie Charts** – Distribution and proportion visualization
 - **Scatter Plots** – Compare two numeric properties
 - **Gantt Timelines** – Interactive project management with task scheduling
+- **Indicator Widgets** – Single-value KPI blocks for dashboards
 
 ### 🎯 Key Capabilities
 - **Seamless Bases Integration** – Works with all Bases features (filters, sorts, groups)
@@ -175,6 +176,52 @@ Compare two numeric properties.
 - **X axis / category:** First numeric property (e.g., `estimate`)
 - **Y value:** Second numeric property (e.g., `actual`)
 - **Series / color:** Optional – categories for coloring points (e.g., `status`, `priority`)
+
+---
+
+### Indicator Widget
+
+Single-value KPI indicator for dashboards and summaries.
+
+**Use cases:**
+- Display total count of notes
+- Show sum, average, min, or max of numeric properties
+- Find oldest or newest dates
+- Create dashboard-style metrics
+
+**Configuration:**
+
+The Indicator widget is organized in three sections:
+
+**Section 1: What to Measure**
+- **Property** (optional): Property to measure. Leave empty to count all notes in the view.
+
+**Section 2: How to Calculate**
+- **How to calculate**: Operation to perform
+  - No property: "Count notes"
+  - Numeric property: "Count notes with value", "Sum of values", "Average of values", "Smallest value", "Largest value"
+  - Date property: "Count notes with date", "Oldest date", "Newest date"
+- **Data type**: Auto-detected from the property, but you can override if needed (Number, Date, Text/Other)
+
+**Section 3: How to Display**
+- **Label**: Text to display with the number (e.g., "Total tasks", "Average duration")
+- **Label position**: Above or below the number
+- **Decimal places**: Number of decimal places (0-3)
+- **Prefix** (optional): Text before the number (e.g., "R$", "%", "#")
+- **Suffix** (optional): Text after the number (e.g., "h", "days", "units", "%")
+- **Highlight color**: Color for the number display (Automatic, Accent, Green, Red, Blue, etc.)
+
+**Features:**
+- **Click to drill down** – Click the number to see all notes behind the metric
+- **Tooltip** – Hover the info icon (ⓘ) to see metric details
+- **Smart error handling** – Clear messages for empty data or type mismatches
+- **Human-readable dates** – Dates are formatted clearly (not raw ISO strings)
+
+**Examples:**
+- Count all notes: Leave property empty, operation = "Count notes"
+- Total time estimate: Property = `timeEstimate`, operation = "Sum of values", suffix = "h"
+- Average duration: Property = `duration`, operation = "Average of values", decimals = 2
+- Newest deadline: Property = `due`, operation = "Newest date"
 
 ---
 
