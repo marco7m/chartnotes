@@ -69,10 +69,10 @@ cd chartnotes
    ```
 
 2. Install dependencies and build:
-   ```bash
+```bash
 npm install
 npm run build
-   ```
+```
 
 3. Restart Obsidian and enable **Chart Notes** in **Settings → Community plugins**
 
