@@ -1,7 +1,7 @@
 {
 	"id": "chart-notes",
 	"name": "Chart Notes",
-	"version": "1.2.0",
+	"version": "1.3.0",
 	"minAppVersion": "1.10.0",
 	"description": "Mostra gráficos (bar, line, stacked-area, pie, scatter, stacked-bar, table, gantt) a partir dos properties/YAML das notas.",
 	"author": "Marco Aurélio",
