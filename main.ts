@@ -155,7 +155,8 @@ export default class ChartNotesPlugin extends Plugin {
 					shouldHide: (config: any) => {
 						const chartType = String(config.get("chartType") ?? "bar");
 						// Doesn't make sense for scatter and gantt, which are row-by-row
-						return chartType === "scatter" || chartType === "gantt";
+						// Stacked-bar always uses sum aggregation
+						return chartType === "scatter" || chartType === "gantt" || chartType === "stacked-bar";
 					},
 				} as any);
 
