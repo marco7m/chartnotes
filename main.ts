@@ -259,14 +259,13 @@ export default class ChartNotesPlugin extends Plugin {
 					},
 				} as any);
 
-				// Section 2: How to Calculate (for Number and Text types)
+				// Section 2: How to Calculate (for Number type only)
 				opts.push({
 					type: "dropdown",
 					key: "metricOperation",
 					displayName: "How to calculate",
 					description:
-						"Operation to perform.\n" +
-						"Options will be validated based on the selected data type.",
+						"Operation to perform on numeric values.",
 					default: "countAll",
 					options: {
 						countAll: "Count all notes",
@@ -283,8 +282,33 @@ export default class ChartNotesPlugin extends Plugin {
 						const metricProperty = config.get("metricProperty") as string | undefined;
 						const hasProperty = metricProperty && metricProperty.trim() !== "" && metricProperty !== "undefined" && metricProperty !== "null";
 						if (!hasProperty) return false; // Show if no property
-						// Hide if date type is selected
-						return dataType === "date";
+						// Hide if date or text type is selected
+						return dataType === "date" || dataType === "text";
+					},
+				} as any);
+
+				// Text-specific operations (only shown when type is text)
+				opts.push({
+					type: "dropdown",
+					key: "metricTextOperation",
+					displayName: "How to calculate",
+					description:
+						"Operation to perform on text values.\n" +
+						"Only count operations are available for text properties.",
+					default: "countAll",
+					options: {
+						countAll: "Count all notes",
+						countNonEmpty: "Count notes where property is set",
+					} as Record<string, string>,
+					shouldHide: (config: any) => {
+						const chartType = String(config.get("chartType") ?? "bar");
+						if (chartType !== "metric") return true;
+						const metricProperty = config.get("metricProperty") as string | undefined;
+						const hasProperty = metricProperty && metricProperty.trim() !== "" && metricProperty !== "undefined" && metricProperty !== "null";
+						if (!hasProperty) return true;
+						const dataType = String(config.get("metricDataType") ?? "number");
+						// Show only if text type is selected
+						return dataType !== "text";
 					},
 				} as any);
 

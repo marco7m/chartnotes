@@ -182,8 +182,11 @@ export class ChartNotesBasesView extends BasesView {
 			if (metricDataType === "date") {
 				// Use dateOperation field
 				metricOp = String(cfg?.get("metricDateOperation") ?? "countNonEmpty");
+			} else if (metricDataType === "text") {
+				// Use textOperation field
+				metricOp = String(cfg?.get("metricTextOperation") ?? "countAll");
 			} else {
-				// Use metricOperation field for number, text, or when no property
+				// Use metricOperation field for number or when no property
 				metricOp = String(cfg?.get("metricOperation") ?? "countAll");
 			}
 			
